@@ -1,0 +1,16 @@
+[Unit]
+Description=OCI Bastion Session Watcher
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=PROFILE=oabcs1-terraform
+Environment=REGION=us-chicago-1
+Environment=AUTH_METHOD=security_token
+Environment=TARGET_USER=opc
+ExecStart=%h/.local/bin/bastion-session watch --interval 300
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target

@@ -12,6 +12,7 @@ dependencies = [
   "rich>=13.7",
   "oci>=2.133.1",
   "python-dateutil>=2.8",
+  "pyyaml>=6.0",
   "typing-extensions>=4.8"
 ]
 

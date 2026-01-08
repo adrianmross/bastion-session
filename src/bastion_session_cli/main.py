@@ -16,10 +16,11 @@ from .runtime import refresh_session, session_status, watch
 @click.option("--auth-method", default=None, help="OCI auth method")
 @click.option("--target-user", default=None, help="Target OS user")
 @click.option("--ssh-public-key", default=None, type=click.Path(path_type=Path), help="Path to SSH public key")
+@click.option("--ssh-private-key", default=None, type=click.Path(path_type=Path), help="Path to SSH private key")
 @click.option("--ssh-include", default=None, type=click.Path(path_type=Path), help="Path to SSH include fragment")
 @click.pass_context
 def cli(ctx: click.Context, profile: str | None, region: str | None, auth_method: str | None,
-        target_user: str | None, ssh_public_key: Path | None, ssh_include: Path | None) -> None:
+        target_user: str | None, ssh_public_key: Path | None, ssh_private_key: Path | None, ssh_include: Path | None) -> None:
     """Manage OCI bastion sessions and SSH config fragments."""
     config = Config.from_env()
     if profile:
@@ -32,6 +33,8 @@ def cli(ctx: click.Context, profile: str | None, region: str | None, auth_method
         config.target_user = target_user
     if ssh_public_key:
         config.ssh_public_key = ssh_public_key
+    if ssh_private_key:
+        config.ssh_private_key = ssh_private_key
     if ssh_include:
         config.ssh_include_path = ssh_include
     ctx.obj = config
@@ -45,10 +48,18 @@ def refresh(config: Config) -> None:
 
 
 @cli.command()
+@click.option(
+    "--output",
+    "output_format",
+    type=click.Choice(["table", "json", "yaml"], case_sensitive=False),
+    default="table",
+    show_default=True,
+    help="Output format",
+)
 @click.pass_obj
-def status(config: Config) -> None:
-    """Show cached session status."""
-    session_status(config)
+def status(config: Config, output_format: str) -> None:
+    """Show session status."""
+    session_status(config, output_format)
 
 
 @cli.command()

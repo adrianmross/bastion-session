@@ -1,20 +1,16 @@
-"""Wrapper around OCI SDK interactions."""
+"""OCI Bastion helpers implemented via OCI CLI subprocess calls."""
 
 from __future__ import annotations
 
+import json
+import subprocess
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import timedelta
+from typing import List
 
-import oci
+from dateutil import parser as date_parser
 
 from .session import BastionSession
-
-
-def build_config(profile: str, region: str, auth: str) -> dict:
-    config = oci.config.from_file(profile_name=profile)
-    config["region"] = region
-    config["auth_type"] = auth
-    return config
 
 
 @dataclass
@@ -27,35 +23,97 @@ class TargetDetails:
 
 
 class BastionClient:
-    def __init__(self, config: dict) -> None:
-        self.client = oci.bastion.BastionClient(config)
+    def __init__(self, profile: str, region: str, auth_method: str) -> None:
+        self.profile = profile
+        self.region = region
+        self.auth_method = auth_method
+
+    def _run(self, *args: str) -> str:
+        command: List[str] = ["oci", "--profile", self.profile]
+        if self.region:
+            command.extend(["--region", self.region])
+        if self.auth_method:
+            command.extend(["--auth", self.auth_method])
+        command.extend(args)
+        completed = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout
 
     def create_session(self, target: TargetDetails) -> BastionSession:
-        response = self.client.create_session(
-            oci.bastion.models.CreateBastionSessionDetails(
-                bastion_id=target.bastion_id,
-                key_details=oci.bastion.models.PublicKeyDetails(public_key_content=open(target.public_key_path).read()),
-                target_resource_details=oci.bastion.models.CreateSessionTargetResourceDetails(
-                    session_type="MANAGED_SSH",
-                    target_resource_id=target.instance_id,
-                    target_resource_operating_system_user_name=target.target_user,
-                    target_resource_private_ip_address=target.private_ip,
-                ),
-                display_name=f"bastion-session-cli-{datetime.utcnow().isoformat()}",
-                key_type="PUB",
-            )
+        output = self._run(
+            "bastion",
+            "session",
+            "create-managed-ssh",
+            "--bastion-id",
+            target.bastion_id,
+            "--target-resource-id",
+            target.instance_id,
+            "--target-private-ip",
+            target.private_ip,
+            "--target-os-username",
+            target.target_user,
+            "--ssh-public-key-file",
+            target.public_key_path,
+            "--query",
+            "data",
+            "--raw-output",
         )
-        return self._to_session(response.data)
+        return self._to_session(json.loads(output))
 
     def get_session(self, session_id: str) -> BastionSession:
-        response = self.client.get_session(session_id)
-        return self._to_session(response.data)
+        output = self._run(
+            "bastion",
+            "session",
+            "get",
+            "--session-id",
+            session_id,
+            "--query",
+            "data",
+            "--raw-output",
+        )
+        return self._to_session(json.loads(output))
 
     @staticmethod
-    def _to_session(data) -> BastionSession:
+    def _to_session(data: dict) -> BastionSession:
+        def _get(*keys: str) -> str:
+            for key in keys:
+                if key in data:
+                    return data[key]
+            raise KeyError(keys[0])
+
+        def _optional(*keys: str):
+            for key in keys:
+                if key in data:
+                    return data[key]
+            return None
+
         return BastionSession(
-            id=data.id,
-            lifecycle_state=data.lifecycle_state,
-            time_created=data.time_created,
-            time_expires=data.time_expires,
+            id=_get("id"),
+            lifecycle_state=_get("lifecycleState", "lifecycle-state", "lifecycle_state"),
+            time_created=date_parser.isoparse(_get("timeCreated", "time-created", "time_created")),
+            time_expires=_parse_expiry(
+                _optional("timeExpires", "time-expires", "time_expires"),
+                _optional("sessionTtlInSeconds", "session-ttl-in-seconds", "session_ttl_in_seconds"),
+                _get("timeCreated", "time-created", "time_created"),
+            ),
         )
+
+
+def _parse_expiry(time_expires_raw, ttl_raw, time_created_raw):
+    time_created = date_parser.isoparse(time_created_raw)
+    if time_expires_raw:
+        return date_parser.isoparse(time_expires_raw)
+
+    if ttl_raw is not None:
+        try:
+            ttl_seconds = int(ttl_raw)
+        except (TypeError, ValueError):
+            ttl_seconds = 0
+        if ttl_seconds > 0:
+            return time_created + timedelta(seconds=ttl_seconds)
+
+    return time_created + timedelta(hours=1)

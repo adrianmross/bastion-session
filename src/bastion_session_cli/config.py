@@ -20,6 +20,7 @@ class Config:
     auth_method: str = "security_token"
     target_user: str = "opc"
     ssh_public_key: Optional[Path] = None
+    ssh_private_key: Optional[Path] = None
     ssh_include_path: Path = DEFAULT_SSH_INCLUDE
     session_state_path: Path = DEFAULT_STATE_PATH
     terraform_outputs_path: Optional[Path] = None
@@ -32,6 +33,7 @@ class Config:
             auth_method=os.getenv("AUTH_METHOD", Config.auth_method),
             target_user=os.getenv("TARGET_USER", Config.target_user),
             ssh_public_key=Path(os.getenv("SSH_PUBLIC_KEY")) if os.getenv("SSH_PUBLIC_KEY") else None,
+            ssh_private_key=Path(os.getenv("SSH_PRIVATE_KEY")) if os.getenv("SSH_PRIVATE_KEY") else None,
             terraform_outputs_path=Path(os.getenv("TERRAFORM_OUTPUTS")) if os.getenv("TERRAFORM_OUTPUTS") else None,
         )
 

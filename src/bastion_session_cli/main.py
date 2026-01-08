@@ -11,13 +11,13 @@ from .runtime import refresh_session, session_status, watch
 
 
 @click.group()
-@click.option("--profile", default=None, help="OCI profile name")
-@click.option("--region", default=None, help="OCI region identifier")
-@click.option("--auth-method", default=None, help="OCI auth method")
-@click.option("--target-user", default=None, help="Target OS user")
-@click.option("--ssh-public-key", default=None, type=click.Path(path_type=Path), help="Path to SSH public key")
-@click.option("--ssh-private-key", default=None, type=click.Path(path_type=Path), help="Path to SSH private key")
-@click.option("--ssh-include", default=None, type=click.Path(path_type=Path), help="Path to SSH include fragment")
+@click.option("-p", "--profile", default=None, help="OCI profile name")
+@click.option("-r", "--region", default=None, help="OCI region identifier")
+@click.option("-a", "--auth-method", default=None, help="OCI auth method")
+@click.option("-u", "--target-user", default=None, help="Target OS user")
+@click.option("-P", "--ssh-public-key", default=None, type=click.Path(path_type=Path), help="Path to SSH public key")
+@click.option("-K", "--ssh-private-key", default=None, type=click.Path(path_type=Path), help="Path to SSH private key")
+@click.option("-I", "--ssh-include", default=None, type=click.Path(path_type=Path), help="Path to SSH include fragment")
 @click.pass_context
 def cli(ctx: click.Context, profile: str | None, region: str | None, auth_method: str | None,
         target_user: str | None, ssh_public_key: Path | None, ssh_private_key: Path | None, ssh_include: Path | None) -> None:
@@ -49,6 +49,7 @@ def refresh(config: Config) -> None:
 
 @cli.command()
 @click.option(
+    "-o",
     "--output",
     "output_format",
     type=click.Choice(["table", "json", "yaml"], case_sensitive=False),
@@ -63,7 +64,7 @@ def status(config: Config, output_format: str) -> None:
 
 
 @cli.command()
-@click.option("--interval", default=300, show_default=True, help="Refresh interval in seconds")
+@click.option("-i", "--interval", default=300, show_default=True, help="Refresh interval in seconds")
 @click.pass_obj
 def watch(config: Config, interval: int) -> None:
     """Continuously refresh session on an interval."""

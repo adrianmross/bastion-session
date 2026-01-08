@@ -168,7 +168,9 @@ def session_status(config: Config, output_format: str = "table") -> None:
         table.add_row("Expires In", status_data["expires_in"])
         console.print(table)
     elif fmt == "json":
-        console.print_json(data=json.dumps(status_data))
+        status_json = json.dumps(status_data)
+        console.file.write(status_json + "\n")
+        console.file.flush()
     elif fmt == "yaml":
         console.print(yaml.safe_dump(status_data, sort_keys=False))
     else:  # pragma: no cover - guarded by CLI choices

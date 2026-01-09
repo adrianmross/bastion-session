@@ -6,11 +6,13 @@ from pathlib import Path
 
 import click
 
+from . import __version__
 from .config import Config
 from .runtime import refresh_session, session_status, watch
 
 
 @click.group()
+@click.version_option(__version__, "-v", "--version", prog_name="bastion-session")
 @click.option("-p", "--profile", default=None, help="OCI profile name")
 @click.option("-r", "--region", default=None, help="OCI region identifier")
 @click.option("-a", "--auth-method", default=None, help="OCI auth method")

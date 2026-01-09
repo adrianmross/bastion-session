@@ -8,7 +8,7 @@ import click
 
 from . import __version__
 from .config import Config
-from .runtime import refresh_session, session_status, watch
+from .runtime import refresh_session, session_status, watch as runtime_watch
 
 
 @click.group()
@@ -70,4 +70,4 @@ def status(config: Config, output_format: str) -> None:
 @click.pass_obj
 def watch(config: Config, interval: int) -> None:
     """Continuously refresh session on an interval."""
-    watch(config, interval_seconds=interval)
+    runtime_watch(config, interval_seconds=interval)

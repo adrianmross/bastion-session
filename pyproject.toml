@@ -1,6 +1,6 @@
 [project]
 name = "bastion-session"
-version = "0.1.0"
+version = "0.1.1"
 description = "Bastion session manager CLI"
 requires-python = ">=3.10"
 authors = [
@@ -22,3 +22,17 @@ bastion-session = "bastion_session_cli.main:cli"
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.bumpver]
+current_version = "0.1.1"
+version_pattern = "MAJOR.MINOR.PATCH"
+commit = false
+tag = false
+
+[tool.bumpver.file_patterns]
+"pyproject.toml" = [
+  'version = "{pep440_version}"',
+]
+"src/bastion_session_cli/__init__.py" = [
+  '__version__ = "{pep440_version}"',
+]

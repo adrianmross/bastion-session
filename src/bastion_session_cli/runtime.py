@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 
 import yaml
@@ -16,6 +17,10 @@ from .oci_client import BastionClient, TargetDetails
 from .session import BastionSession, SessionCache
 from .ssh_config import write_fragment
 from .terraform import read_outputs
+
+
+ACTIVE_POLL_INTERVAL_SECONDS = 5.0
+ACTIVE_WAIT_TIMEOUT = timedelta(minutes=2)
 
 console = Console()
 
@@ -121,6 +126,24 @@ def update_ssh_fragment(config: Config, metadata: SessionMetadata, session_id: s
     write_fragment(config.ssh_include_path, [host_entry])
 
 
+def _wait_for_active(
+    client: BastionClient,
+    session_id: str,
+    timeout: timedelta,
+    poll_interval: float,
+) -> BastionSession:
+    deadline = time.monotonic() + timeout.total_seconds()
+    while True:
+        session = client.get_session(session_id)
+        if session.lifecycle_state.upper() == "ACTIVE":
+            return session
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Session {session_id} did not reach ACTIVE state (last state: {session.lifecycle_state})"
+            )
+        time.sleep(poll_interval)
+
+
 def refresh_session(config: Config) -> None:
     state_store = StateStore(config.session_state_path)
     cache = SessionCache(state_store)
@@ -139,7 +162,13 @@ def refresh_session(config: Config) -> None:
         public_key_path=str(config.ssh_public_key),
     )
 
-    session = client.create_session(target)
+    created_session = client.create_session(target)
+    session = _wait_for_active(
+        client,
+        created_session.id,
+        timeout=ACTIVE_WAIT_TIMEOUT,
+        poll_interval=ACTIVE_POLL_INTERVAL_SECONDS,
+    )
     cache.set(session)
     ensure_includes(config)
     update_ssh_fragment(config, metadata, session.id)

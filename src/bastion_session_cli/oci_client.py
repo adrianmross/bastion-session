@@ -13,6 +13,9 @@ from dateutil import parser as date_parser
 from .session import BastionSession
 
 
+OCI_COMMAND_TIMEOUT_SECONDS = 60
+
+
 @dataclass
 class TargetDetails:
     bastion_id: str
@@ -35,12 +38,28 @@ class BastionClient:
         if self.auth_method:
             command.extend(["--auth", self.auth_method])
         command.extend(args)
-        completed = subprocess.run(
-            command,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=OCI_COMMAND_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                "Timed out waiting for OCI CLI response; the security token may be missing or expired. "
+                f"Run `oci session authenticate --profile {self.profile}` to refresh the token."
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr or ""
+            lowered = stderr.lower()
+            if "security token" in lowered or "security_token" in lowered or "security-token" in lowered:
+                raise RuntimeError(
+                    "OCI CLI reported a security token authentication failure. "
+                    f"Re-authenticate with `oci session authenticate --profile {self.profile}`."
+                ) from exc
+            raise
         return completed.stdout
 
     def create_session(self, target: TargetDetails) -> BastionSession:

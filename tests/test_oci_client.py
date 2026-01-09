@@ -1,5 +1,8 @@
 import json
+import subprocess
 from datetime import datetime
+
+import pytest
 
 from bastion_session_cli.oci_client import BastionClient, TargetDetails
 
@@ -48,3 +51,40 @@ def test_to_session_handles_ttl_only(monkeypatch):
     session = client.get_session("ocid1.session")
 
     assert session.time_expires.isoformat() == "2024-06-01T12:30:00+00:00"
+
+
+
+def test_run_timeout_raises_helpful_error(monkeypatch):
+    client = BastionClient(profile="p", region="", auth_method="")
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=60)
+
+    monkeypatch.setattr("bastion_session_cli.oci_client.subprocess.run", fake_run)
+
+    with pytest.raises(RuntimeError) as exc:
+        client._run("bastion", "session")
+
+    message = str(exc.value)
+    assert "timed out waiting" in message.lower()
+    assert "oci session authenticate" in message
+
+
+def test_run_token_error_prompts_reauth(monkeypatch):
+    client = BastionClient(profile="p", region="", auth_method="")
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            1,
+            args[0],
+            stderr="ERROR: The security token has expired."
+        )
+
+    monkeypatch.setattr("bastion_session_cli.oci_client.subprocess.run", fake_run)
+
+    with pytest.raises(RuntimeError) as exc:
+        client._run("bastion", "session")
+
+    message = str(exc.value)
+    assert "security token" in message.lower()
+    assert "oci session authenticate" in message

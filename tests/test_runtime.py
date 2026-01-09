@@ -37,3 +37,21 @@ def test_load_target_details_with_env(monkeypatch, tmp_path):
     assert metadata.instance_id == "ocid1.instance"
     assert metadata.private_ip == "10.0.0.10"
     assert metadata.bastion_host == "198.51.100.10"
+
+
+def test_load_target_details_parent_search(monkeypatch, tmp_path):
+    tf_root = tmp_path / "tf" / "dev-remote-workstation"
+    tf_root.mkdir(parents=True)
+    state_path = make_state_file(tf_root / "terraform.tfstate")
+
+    nested_dir = tf_root / "subdir"
+    nested_dir.mkdir()
+    monkeypatch.chdir(nested_dir)
+
+    config = Config()
+    metadata = load_target_details(config)
+
+    assert metadata.bastion_id == "ocid1.bastion"
+    assert metadata.instance_id == "ocid1.instance"
+    assert metadata.private_ip == "10.0.0.10"
+    assert metadata.bastion_host == "198.51.100.10"

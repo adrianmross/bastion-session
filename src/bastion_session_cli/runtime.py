@@ -29,17 +29,32 @@ class SessionMetadata:
 
 
 def _resolve_outputs_path(config: Config) -> Path | None:
-    if config.terraform_outputs_path and config.terraform_outputs_path.exists():
-        return config.terraform_outputs_path
+    candidates: list[Path] = []
+    seen: set[Path] = set()
 
-    repo_root = Path(__file__).resolve().parents[4]
-    state_path = repo_root / "terraform.tfstate"
-    if state_path.exists():
-        return state_path
+    def add_candidate(path: Path | None) -> None:
+        if path and path not in seen:
+            candidates.append(path)
+            seen.add(path)
 
-    json_path = repo_root / "outputs.json"
-    if json_path.exists():
-        return json_path
+    add_candidate(config.terraform_outputs_path if config.terraform_outputs_path else None)
+
+    cwd = Path.cwd()
+    search_roots = [cwd, *cwd.parents]
+    filenames = ["terraform.tfstate", "terraform.tfstate.json", "outputs.json"]
+    for root in search_roots:
+        for name in filenames:
+            add_candidate(root / name)
+
+    repo_parents = list(Path(__file__).resolve().parents)
+    if len(repo_parents) >= 5:
+        repo_root = repo_parents[4]
+        for name in ("terraform.tfstate", "outputs.json"):
+            add_candidate(repo_root / name)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
 
     return None
 

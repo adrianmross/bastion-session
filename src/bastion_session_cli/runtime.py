@@ -21,6 +21,9 @@ from .terraform import read_outputs
 
 ACTIVE_POLL_INTERVAL_SECONDS = 5.0
 ACTIVE_WAIT_TIMEOUT = timedelta(minutes=2)
+DEFAULT_WATCH_INTERVAL_SECONDS = 300
+MIN_AUTO_REFRESH_SECONDS = 30
+AUTO_REFRESH_MARGIN = ACTIVE_WAIT_TIMEOUT + timedelta(seconds=30)
 
 console = Console()
 
@@ -144,7 +147,7 @@ def _wait_for_active(
         time.sleep(poll_interval)
 
 
-def refresh_session(config: Config) -> None:
+def refresh_session(config: Config) -> BastionSession:
     state_store = StateStore(config.session_state_path)
     cache = SessionCache(state_store)
 
@@ -173,6 +176,7 @@ def refresh_session(config: Config) -> None:
     ensure_includes(config)
     update_ssh_fragment(config, metadata, session.id)
     console.print(f"[green]Created session {session.id}, expires at {session.time_expires.isoformat()}")
+    return session
 
 
 def _build_status_data(session: BastionSession) -> dict[str, str]:
@@ -221,11 +225,25 @@ def session_status(config: Config, output_format: str = "table") -> None:
         raise ValueError(f"Unsupported output format: {output_format}")
 
 
-def watch(config: Config, interval_seconds: int = 300) -> None:
+def _auto_refresh_interval(session: BastionSession) -> int:
+    expires_in_seconds = max(session.expires_in.total_seconds(), 0)
+    margin_seconds = AUTO_REFRESH_MARGIN.total_seconds()
+    interval = expires_in_seconds - margin_seconds
+    if interval < MIN_AUTO_REFRESH_SECONDS:
+        interval = MIN_AUTO_REFRESH_SECONDS
+    return int(interval)
+
+
+def watch(config: Config, interval_seconds: int | None = None) -> None:
+    explicit_interval = interval_seconds if interval_seconds and interval_seconds > 0 else None
+    sleep_seconds = explicit_interval or DEFAULT_WATCH_INTERVAL_SECONDS
     while True:
         try:
-            refresh_session(config)
+            session = refresh_session(config)
+            if explicit_interval is None:
+                sleep_seconds = _auto_refresh_interval(session)
         except Exception as exc:  # pragma: no cover - background loop
             console.print(f"[red]Failed to refresh session: {exc}")
-        console.print(f"Sleeping for {interval_seconds} seconds")
-        time.sleep(interval_seconds)
+            sleep_seconds = explicit_interval or DEFAULT_WATCH_INTERVAL_SECONDS
+        console.print(f"Sleeping for {sleep_seconds} seconds")
+        time.sleep(sleep_seconds)

@@ -66,8 +66,8 @@ def status(config: Config, output_format: str) -> None:
 
 
 @cli.command()
-@click.option("-i", "--interval", default=300, show_default=True, help="Refresh interval in seconds")
+@click.option("-i", "--interval", type=int, default=None, help="Refresh interval in seconds")
 @click.pass_obj
-def watch(config: Config, interval: int) -> None:
+def watch(config: Config, interval: int | None) -> None:
     """Continuously refresh session on an interval."""
     runtime_watch(config, interval_seconds=interval)

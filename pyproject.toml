@@ -20,7 +20,7 @@ dependencies = [
 bastion-session = "bastion_session_cli.main:cli"
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.bumpver]

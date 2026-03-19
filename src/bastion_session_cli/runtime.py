@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import time
 from dataclasses import dataclass
 from datetime import timedelta
@@ -65,6 +67,128 @@ def _resolve_outputs_path(config: Config) -> Path | None:
             return candidate
 
     return None
+
+
+_PUBLIC_KEY_ENV_VARS = (
+    "SSH_PUBLIC_KEY",
+    "TF_VAR_bastion_ssh_public_key_path",
+    "TF_VAR_ssh_public_key_path",
+    "BASTION_SSH_PUBLIC_KEY_PATH",
+    "SSH_PUBLIC_KEY_PATH",
+)
+
+_PUBLIC_KEY_OUTPUT_KEYS = (
+    "bastion_ssh_public_key_path",
+    "ssh_public_key_path",
+    "public_key_path",
+)
+
+_TFVARS_FILENAMES = (
+    "env.tfvars",
+    "terraform.tfvars",
+    "terraform.tfvars.json",
+)
+
+_TFVARS_DOUBLE_QUOTE = re.compile(r"^\s*([A-Za-z0-9_]+)\s*=\s*\"([^\"]+)\"\s*(?:#.*)?$")
+_TFVARS_SINGLE_QUOTE = re.compile(r"^\s*([A-Za-z0-9_]+)\s*=\s*'([^']+)'\s*(?:#.*)?$")
+
+
+def _extract_paths_from_tfvars(tfvars_path: Path) -> list[str]:
+    try:
+        content = tfvars_path.read_text()
+    except OSError:
+        return []
+
+    results: list[str] = []
+
+    if tfvars_path.suffix == ".json":
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(data, dict):
+            for key in _PUBLIC_KEY_OUTPUT_KEYS:
+                value = data.get(key)
+                if isinstance(value, str) and value.strip():
+                    results.append(value.strip())
+        return results
+
+    for line in content.splitlines():
+        match = _TFVARS_DOUBLE_QUOTE.match(line) or _TFVARS_SINGLE_QUOTE.match(line)
+        if not match:
+            continue
+        key, value = match.group(1), match.group(2)
+        if key in _PUBLIC_KEY_OUTPUT_KEYS and value.strip():
+            results.append(value.strip())
+
+    return results
+
+
+def _resolve_public_key(config: Config) -> Path | None:
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def add_candidate(raw: str | Path | None, *, base_dir: Path | None = None) -> None:
+        if raw is None:
+            return
+        if isinstance(raw, Path):
+            raw_path = raw
+        else:
+            raw_str = raw.strip()
+            if not raw_str:
+                return
+            raw_path = Path(raw_str)
+        path = raw_path.expanduser()
+        if not path.is_absolute():
+            base = base_dir if base_dir else Path.cwd()
+            path = (base / path).expanduser()
+        try:
+            normalized = path.resolve()
+        except OSError:
+            normalized = path
+        if normalized not in seen:
+            seen.add(normalized)
+            candidates.append(normalized)
+
+    if config.ssh_public_key:
+        add_candidate(config.ssh_public_key)
+
+    for env_name in _PUBLIC_KEY_ENV_VARS:
+        env_value = os.getenv(env_name)
+        if env_value:
+            add_candidate(env_value)
+
+    outputs_path = _resolve_outputs_path(config)
+    if outputs_path and outputs_path.exists():
+        try:
+            outputs = read_outputs(outputs_path)
+        except Exception:  # pragma: no cover - defensive
+            outputs = {}
+        if isinstance(outputs, dict):
+            for key in _PUBLIC_KEY_OUTPUT_KEYS:
+                value = outputs.get(key)
+                if isinstance(value, str) and value.strip():
+                    add_candidate(value, base_dir=outputs_path.parent)
+
+        for tfvars_name in _TFVARS_FILENAMES:
+            tfvars_path = outputs_path.parent / tfvars_name
+            if tfvars_path.exists():
+                for value in _extract_paths_from_tfvars(tfvars_path):
+                    add_candidate(value, base_dir=tfvars_path.parent)
+
+    search_roots = [Path.cwd(), *Path.cwd().parents]
+    for root in search_roots:
+        for tfvars_name in _TFVARS_FILENAMES:
+            tfvars_path = root / tfvars_name
+            if tfvars_path.exists():
+                for value in _extract_paths_from_tfvars(tfvars_path):
+                    add_candidate(value, base_dir=tfvars_path.parent)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0] if candidates else None
 
 
 def load_target_details(config: Config) -> SessionMetadata:
@@ -153,8 +277,10 @@ def refresh_session(config: Config) -> BastionSession:
 
     metadata = load_target_details(config)
 
-    if not config.ssh_public_key:
+    public_key = config.ssh_public_key or _resolve_public_key(config)
+    if not public_key:
         raise RuntimeError("SSH_PUBLIC_KEY environment variable or config required")
+    config.ssh_public_key = public_key
 
     client = BastionClient(config.profile, config.region, config.auth_method)
     target = TargetDetails(
@@ -162,7 +288,7 @@ def refresh_session(config: Config) -> BastionSession:
         instance_id=metadata.instance_id,
         private_ip=metadata.private_ip,
         target_user=config.target_user,
-        public_key_path=str(config.ssh_public_key),
+        public_key_path=str(public_key),
     )
 
     created_session = client.create_session(target)

@@ -25,7 +25,7 @@ go build -o bastion-session ./cmd/bastion-session
 ./bastion-session refresh --ssh-public-key ~/.ssh/keys/mykey.pub
 ./bastion-session status
 ./bastion-session watch --interval 600
-./bastion-session list-bastions --source scoped
+./bastion-session list --source scoped
 ./bastion-session tui
 ```
 

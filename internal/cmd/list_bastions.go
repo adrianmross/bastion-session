@@ -20,11 +20,11 @@ type bastionRow struct {
 	Source        string `json:"source" yaml:"source"`
 }
 
-func newListBastionsCmd(opts *rootOptions) *cobra.Command {
+func newListCmd(opts *rootOptions) *cobra.Command {
 	var output string
 	var source string
 	cmd := &cobra.Command{
-		Use:   "list-bastions",
+		Use:   "list",
 		Short: "List bastions scoped by oci-context or from tracked store",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			source = strings.ToLower(source)

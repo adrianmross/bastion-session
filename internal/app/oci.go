@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -52,7 +53,11 @@ func (c OCIClient) run(args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ociCommandTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "oci", cmdArgs...)
-	out, err := cmd.CombinedOutput()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			if strings.EqualFold(strings.TrimSpace(c.AuthMethod), "security_token") {
@@ -60,13 +65,17 @@ func (c OCIClient) run(args ...string) ([]byte, error) {
 			}
 			return nil, fmt.Errorf("timed out waiting for OCI CLI response (profile=%s region=%s)", c.Profile, c.Region)
 		}
-		msg := strings.ToLower(string(out))
+		stderrText := strings.TrimSpace(stderr.String())
+		if stderrText == "" {
+			stderrText = strings.TrimSpace(stdout.String())
+		}
+		msg := strings.ToLower(stderrText)
 		if strings.Contains(msg, "security token") || strings.Contains(msg, "security_token") || strings.Contains(msg, "security-token") {
 			return nil, fmt.Errorf("OCI CLI reported a security token authentication failure. Re-authenticate with `oci session authenticate --profile %s`", c.Profile)
 		}
-		return nil, fmt.Errorf("oci command failed: %w: %s", err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("oci command failed: %w: %s", err, stderrText)
 	}
-	return out, nil
+	return stdout.Bytes(), nil
 }
 
 func (c OCIClient) CreateSession(target TargetDetails) (BastionSession, error) {
@@ -108,9 +117,18 @@ func (c OCIClient) ListBastions(compartmentID string) ([]BastionInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	out = bytes.TrimSpace(out)
+	if len(out) == 0 {
+		return []BastionInfo{}, nil
+	}
 	var rows []map[string]any
 	if err := json.Unmarshal(out, &rows); err != nil {
-		return nil, err
+		const maxPreview = 256
+		preview := string(out)
+		if len(preview) > maxPreview {
+			preview = preview[:maxPreview] + "..."
+		}
+		return nil, fmt.Errorf("failed to parse OCI bastion list output as JSON: %w (output=%q)", err, preview)
 	}
 	result := make([]BastionInfo, 0, len(rows))
 	for _, row := range rows {

@@ -1,21 +1,10 @@
-# Python caches and artifacts
-__pycache__/
-*.py[cod]
-*$py.class
+# Go build artifacts
+bastion-session
+*.test
+coverage.out
 
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-pip-wheel-metadata/
-
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Pytest cache
-.pytest_cache/
+# Local temp/tooling dirs
+tmp/
 
 # IDE settings
 .idea/

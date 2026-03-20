@@ -16,10 +16,32 @@ type Status struct {
 	Context   string `json:"context,omitempty" yaml:"context,omitempty"`
 }
 
-func RefreshSession(cfg Config) (BastionSession, error) {
-	metadata, err := LoadTargetDetails(cfg)
-	if err != nil {
-		return BastionSession{}, err
+type RefreshOptions struct {
+	BastionID  string
+	InstanceID string
+	PrivateIP  string
+}
+
+func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, error) {
+	metadata := SessionMetadata{}
+	if strings.TrimSpace(opts.BastionID) == "" || strings.TrimSpace(opts.InstanceID) == "" || strings.TrimSpace(opts.PrivateIP) == "" {
+		fromTF, err := LoadTargetDetails(cfg)
+		if err != nil {
+			return BastionSession{}, err
+		}
+		metadata = fromTF
+	}
+	if strings.TrimSpace(opts.BastionID) != "" {
+		metadata.BastionID = strings.TrimSpace(opts.BastionID)
+	}
+	if strings.TrimSpace(opts.InstanceID) != "" {
+		metadata.InstanceID = strings.TrimSpace(opts.InstanceID)
+	}
+	if strings.TrimSpace(opts.PrivateIP) != "" {
+		metadata.PrivateIP = strings.TrimSpace(opts.PrivateIP)
+	}
+	if metadata.BastionID == "" || metadata.InstanceID == "" || metadata.PrivateIP == "" {
+		return BastionSession{}, fmt.Errorf("bastion_id, instance_id, and private_ip are required")
 	}
 	pub := cfg.SSHPublicKey
 	if strings.TrimSpace(pub) == "" {
@@ -73,6 +95,10 @@ func RefreshSession(cfg Config) (BastionSession, error) {
 		LastSeenAt: time.Now().UTC(),
 	})
 	return active, nil
+}
+
+func RefreshSession(cfg Config) (BastionSession, error) {
+	return RefreshSessionWithTarget(cfg, RefreshOptions{})
 }
 
 func SessionStatus(cfg Config) (Status, error) {

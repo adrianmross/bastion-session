@@ -18,6 +18,17 @@ type TrackedBastion struct {
 	LastSeenAt    time.Time `json:"last_seen_at" yaml:"last_seen_at"`
 }
 
+type CurrentBastion struct {
+	ID            string    `json:"id" yaml:"id"`
+	Name          string    `json:"name" yaml:"name"`
+	CompartmentID string    `json:"compartment_id" yaml:"compartment_id"`
+	Region        string    `json:"region" yaml:"region"`
+	Profile       string    `json:"profile" yaml:"profile"`
+	ContextName   string    `json:"context_name,omitempty" yaml:"context_name,omitempty"`
+	Source        string    `json:"source,omitempty" yaml:"source,omitempty"`
+	SelectedAt    time.Time `json:"selected_at" yaml:"selected_at"`
+}
+
 type trackedStore struct {
 	Bastions []TrackedBastion `json:"bastions"`
 }
@@ -100,4 +111,40 @@ func UpsertTracked(path string, items ...TrackedBastion) error {
 		return existing[i].LastSeenAt.After(existing[j].LastSeenAt)
 	})
 	return SaveTracked(path, existing)
+}
+
+func SaveCurrent(path string, cur CurrentBastion) error {
+	if cur.SelectedAt.IsZero() {
+		cur.SelectedAt = time.Now().UTC()
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	buf, err := json.MarshalIndent(cur, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, buf, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func LoadCurrent(path string) (*CurrentBastion, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var cur CurrentBastion
+	if err := json.Unmarshal(data, &cur); err != nil {
+		return nil, nil
+	}
+	if cur.ID == "" {
+		return nil, nil
+	}
+	return &cur, nil
 }

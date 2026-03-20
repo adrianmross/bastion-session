@@ -26,6 +26,8 @@ go build -o bastion-session ./cmd/bastion-session
 ./bastion-session status
 ./bastion-session watch --interval 600
 ./bastion-session list --source scoped
+./bastion-session use <bastion-ocid> --source tracked
+./bastion-session current
 ./bastion-session tui
 ```
 

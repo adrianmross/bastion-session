@@ -21,6 +21,7 @@ type Config struct {
 	SSHPrivateKey        string
 	SSHIncludePath       string
 	SessionStatePath     string
+	CurrentStatePath     string
 	TerraformOutputsPath string
 	TrackedBastionsPath  string
 
@@ -58,6 +59,7 @@ func ConfigFromEnv() Config {
 		TargetUser:          DefaultTargetUser,
 		SSHIncludePath:      sshInclude,
 		SessionStatePath:    statePath,
+		CurrentStatePath:    filepath.Join(filepath.Dir(statePath), "current-bastion.json"),
 		TrackedBastionsPath: trackedPath,
 		ContextScopeEnabled: true,
 	}
@@ -84,6 +86,10 @@ func ConfigFromEnv() Config {
 	}
 	if v := os.Getenv("BASTION_SESSION_STATE_PATH"); v != "" {
 		cfg.SessionStatePath = v
+		cfg.CurrentStatePath = filepath.Join(filepath.Dir(v), "current-bastion.json")
+	}
+	if v := os.Getenv("BASTION_CURRENT_PATH"); v != "" {
+		cfg.CurrentStatePath = v
 	}
 	if v := os.Getenv("BASTION_SESSION_SSH_INCLUDE"); v != "" {
 		cfg.SSHIncludePath = v

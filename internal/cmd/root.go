@@ -21,6 +21,7 @@ type rootOptions struct {
 	sshPrivateKey    string
 	sshInclude       string
 	statePath        string
+	currentPath      string
 	terraformOutputs string
 	trackedPath      string
 
@@ -63,6 +64,9 @@ func newRootCmd() *cobra.Command {
 			}
 			if opts.statePath != "" {
 				cfg.SessionStatePath = opts.statePath
+			}
+			if opts.currentPath != "" {
+				cfg.CurrentStatePath = opts.currentPath
 			}
 			if opts.terraformOutputs != "" {
 				cfg.TerraformOutputsPath = opts.terraformOutputs
@@ -107,6 +111,7 @@ func newRootCmd() *cobra.Command {
 	pf.StringVarP(&opts.sshPrivateKey, "ssh-private-key", "K", "", "Path to SSH private key")
 	pf.StringVarP(&opts.sshInclude, "ssh-include", "I", "", "Path to SSH include fragment")
 	pf.StringVar(&opts.statePath, "state-path", "", "Path to state cache file")
+	pf.StringVar(&opts.currentPath, "current-path", "", "Path to current selected bastion state file")
 	pf.StringVar(&opts.trackedPath, "tracked-path", "", "Path to tracked bastions file")
 	pf.StringVar(&opts.terraformOutputs, "terraform-outputs", "", "Path to Terraform state/outputs file")
 	pf.StringVar(&opts.ociContextConfig, "oci-context-config", "", "Path to oci-context config file")
@@ -118,6 +123,8 @@ func newRootCmd() *cobra.Command {
 		newStatusCmd(opts),
 		newWatchCmd(opts),
 		newListCmd(opts),
+		newUseCmd(opts),
+		newCurrentCmd(opts),
 		newTUICmd(opts),
 	)
 	return cmd

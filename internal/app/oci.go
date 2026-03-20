@@ -224,7 +224,7 @@ func (c OCIClient) ListSessions(bastionID string) ([]SessionInfo, error) {
 			BastionID:      asString(row, "bastionId", "bastion-id", "bastion_id"),
 			LifecycleState: asString(row, "lifecycleState", "lifecycle-state", "lifecycle_state"),
 			TargetResource: asString(row, "targetResourceId", "target-resource-id", "target_resource_id"),
-			TargetPrivate:  asString(row, "targetResourceDetails.privateIpAddress", "target-private-ip", "target_private_ip"),
+			TargetPrivate:  asNestedString(row, "targetResourceDetails.privateIpAddress", "target-private-ip", "target_private_ip"),
 		}
 		if t := asString(row, "timeCreated", "time-created", "time_created"); t != "" {
 			if ts, err := time.Parse(time.RFC3339, t); err == nil {
@@ -262,10 +262,13 @@ func parseSessionJSON(out []byte) (BastionSession, error) {
 		return BastionSession{}, err
 	}
 	return BastionSession{
-		ID:             asString(data, "id"),
-		LifecycleState: asString(data, "lifecycleState", "lifecycle-state", "lifecycle_state"),
-		TimeCreated:    created,
-		TimeExpires:    expires,
+		ID:               asString(data, "id"),
+		BastionID:        asString(data, "bastionId", "bastion-id", "bastion_id"),
+		TargetResourceID: asString(data, "targetResourceId", "target-resource-id", "target_resource_id"),
+		TargetPrivateIP:  asNestedString(data, "targetResourceDetails.privateIpAddress", "target-private-ip", "target_private_ip"),
+		LifecycleState:   asString(data, "lifecycleState", "lifecycle-state", "lifecycle_state"),
+		TimeCreated:      created,
+		TimeExpires:      expires,
 	}, nil
 }
 
@@ -300,6 +303,42 @@ func asString(row map[string]any, keys ...string) string {
 			default:
 				return fmt.Sprintf("%v", vv)
 			}
+		}
+	}
+	return ""
+}
+
+func asNestedString(row map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if strings.Contains(key, ".") {
+			parts := strings.Split(key, ".")
+			var cur any = row
+			ok := true
+			for _, p := range parts {
+				m, isMap := cur.(map[string]any)
+				if !isMap {
+					ok = false
+					break
+				}
+				v, exists := m[p]
+				if !exists {
+					ok = false
+					break
+				}
+				cur = v
+			}
+			if ok {
+				switch vv := cur.(type) {
+				case string:
+					return vv
+				default:
+					return fmt.Sprintf("%v", vv)
+				}
+			}
+			continue
+		}
+		if v := asString(row, key); v != "" {
+			return v
 		}
 	}
 	return ""

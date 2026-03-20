@@ -8,10 +8,13 @@ import (
 )
 
 type BastionSession struct {
-	ID             string    `json:"id" yaml:"id"`
-	LifecycleState string    `json:"lifecycle_state" yaml:"lifecycle_state"`
-	TimeCreated    time.Time `json:"time_created" yaml:"time_created"`
-	TimeExpires    time.Time `json:"time_expires" yaml:"time_expires"`
+	ID               string    `json:"id" yaml:"id"`
+	BastionID        string    `json:"bastion_id,omitempty" yaml:"bastion_id,omitempty"`
+	TargetResourceID string    `json:"target_resource_id,omitempty" yaml:"target_resource_id,omitempty"`
+	TargetPrivateIP  string    `json:"target_private_ip,omitempty" yaml:"target_private_ip,omitempty"`
+	LifecycleState   string    `json:"lifecycle_state" yaml:"lifecycle_state"`
+	TimeCreated      time.Time `json:"time_created" yaml:"time_created"`
+	TimeExpires      time.Time `json:"time_expires" yaml:"time_expires"`
 }
 
 func (s BastionSession) ExpiresIn() time.Duration {

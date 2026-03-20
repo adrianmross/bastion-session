@@ -117,7 +117,7 @@ func newRootCmd() *cobra.Command {
 		newRefreshCmd(opts),
 		newStatusCmd(opts),
 		newWatchCmd(opts),
-		newListBastionsCmd(opts),
+		newListCmd(opts),
 		newTUICmd(opts),
 	)
 	return cmd

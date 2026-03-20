@@ -25,7 +25,7 @@ go build -o bastion-session ./cmd/bastion-session
 ./bastion-session refresh --ssh-public-key ~/.ssh/keys/mykey.pub
 ./bastion-session status
 ./bastion-session watch --interval 600
-./bastion-session list-bastions --source scoped
+./bastion-session list --source scoped
 ./bastion-session tui
 ```
 
@@ -42,7 +42,8 @@ Include ~/.ssh/config.d/bastion-session
 
 ## Context Scoping
 
-By default, bastion-session loads your current `oci-context` and scopes operations by it.
+By default, bastion-session loads your current `oci-context` and scopes operations by it
+(profile, auth method, region, compartment).
 
 - Disable scoping for a command: `--no-context-scope`
 - Force global oci-context config: `--global`

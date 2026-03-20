@@ -1,5 +1,5 @@
 # Go build artifacts
-bastion-session
+/bastion-session
 *.test
 coverage.out
 

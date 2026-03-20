@@ -34,6 +34,7 @@ type Config struct {
 type ContextRef struct {
 	Name            string
 	Profile         string
+	AuthMethod      string
 	Region          string
 	CompartmentOCID string
 	TenancyOCID     string
@@ -109,6 +110,11 @@ func (c *Config) ApplyContextScope(ctx *ContextRef) {
 	if c.Region == "" || c.Region == DefaultRegion {
 		if ctx.Region != "" {
 			c.Region = ctx.Region
+		}
+	}
+	if c.AuthMethod == "" {
+		if ctx.AuthMethod != "" {
+			c.AuthMethod = ctx.AuthMethod
 		}
 	}
 }

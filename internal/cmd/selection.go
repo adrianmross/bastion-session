@@ -21,6 +21,9 @@ func loadCurrentSelection(cfg *app.Config) (*app.CurrentBastion, error) {
 	if (cfg.Region == "" || cfg.Region == app.DefaultRegion) && strings.TrimSpace(cur.Region) != "" {
 		cfg.Region = cur.Region
 	}
+	if strings.TrimSpace(cfg.AuthMethod) == "" && strings.TrimSpace(cur.AuthMethod) != "" {
+		cfg.AuthMethod = cur.AuthMethod
+	}
 	return cur, nil
 }
 

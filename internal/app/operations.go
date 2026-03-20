@@ -77,9 +77,10 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		return BastionSession{}, err
 	}
 	_ = UpsertTracked(cfg.TrackedBastionsPath, TrackedBastion{
-		ID:      metadata.BastionID,
-		Region:  cfg.Region,
-		Profile: cfg.Profile,
+		ID:         metadata.BastionID,
+		Region:     cfg.Region,
+		Profile:    cfg.Profile,
+		AuthMethod: cfg.AuthMethod,
 		CompartmentID: func() string {
 			if cfg.ScopedContext != nil {
 				return cfg.ScopedContext.CompartmentOCID
@@ -152,6 +153,7 @@ func ListScopedBastions(cfg Config) ([]BastionInfo, error) {
 			CompartmentID: items[i].CompartmentID,
 			Region:        cfg.Region,
 			Profile:       cfg.Profile,
+			AuthMethod:    cfg.AuthMethod,
 			ContextName:   ctxName,
 			LastSeenAt:    time.Now().UTC(),
 		})

@@ -28,8 +28,17 @@ func loadCurrentSelection(cfg *app.Config) (*app.CurrentBastion, error) {
 }
 
 func requireBastionID(current *app.CurrentBastion, explicit string) (string, error) {
-	if strings.TrimSpace(explicit) != "" {
-		return strings.TrimSpace(explicit), nil
+	if token := strings.TrimSpace(explicit); token != "" {
+		if strings.HasPrefix(token, "ocid1.") {
+			return token, nil
+		}
+		if current != nil && strings.TrimSpace(current.ID) != "" {
+			ref := app.BuildShortRefs([]string{current.ID}, 2)[current.ID]
+			if token == ref {
+				return strings.TrimSpace(current.ID), nil
+			}
+		}
+		return token, nil
 	}
 	if current != nil && strings.TrimSpace(current.ID) != "" {
 		return strings.TrimSpace(current.ID), nil

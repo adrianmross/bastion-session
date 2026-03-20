@@ -52,3 +52,25 @@ func TestResolvePublicKeyFromOutputsTFVars(t *testing.T) {
 		t.Fatalf("expected %s, got %s", pub, got)
 	}
 }
+
+func TestResolvePublicKeyFallsBackToDefaultSSHKey(t *testing.T) {
+	home := t.TempDir()
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pub := filepath.Join(sshDir, "id_ed25519.pub")
+	if err := os.WriteFile(pub, []byte("ssh-ed25519 AAA"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("SSH_PUBLIC_KEY", "")
+	t.Setenv("TF_VAR_bastion_ssh_public_key_path", "")
+	t.Setenv("TF_VAR_ssh_public_key_path", "")
+	t.Setenv("BASTION_SSH_PUBLIC_KEY_PATH", "")
+	t.Setenv("SSH_PUBLIC_KEY_PATH", "")
+
+	if got := ResolvePublicKey(Config{}); got != pub {
+		t.Fatalf("expected %s, got %s", pub, got)
+	}
+}

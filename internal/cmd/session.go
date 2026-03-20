@@ -27,9 +27,13 @@ func newSessionNewCmd(opts *rootOptions) *cobra.Command {
 	var instanceID string
 	var privateIP string
 	cmd := &cobra.Command{
-		Use:   "new",
+		Use:   "new [bastion-id-or-ref]",
 		Short: "Create a new bastion session (explicit create/renew path)",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(bastionID) == "" && len(args) == 1 {
+				bastionID = strings.TrimSpace(args[0])
+			}
 			cur, err := loadCurrentSelection(&opts.cfg)
 			if err != nil {
 				return err

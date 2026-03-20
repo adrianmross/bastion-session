@@ -1,28 +1,38 @@
-# Bastion Session CLI
+# Bastion Session CLI (Go)
 
-CLI utility to manage OCI bastion managed SSH sessions, maintain SSH config fragments,
+Go-based CLI/TUI utility to manage OCI bastion managed SSH sessions, maintain SSH config fragments,
 and keep sessions refreshed for remote workstation access.
 
 ## Features
 
-- Create bastion managed SSH sessions using OCI SDK.
+- Create OCI bastion managed SSH sessions (via OCI CLI).
 - Cache session metadata and render SSH config include files.
-- Watch mode to auto-refresh sessions on a schedule.
-- Environment overrides and CLI options for profile, region, and user.
+- Watch mode with auto-refresh based on TTL.
+- OCI-context-aware scoping (profile/region/compartment from current `oci-context`).
+- List bastions in current scoped context, plus tracked bastions history.
+- Interactive TUI (based on `oci-context` patterns) with scope banner and escape-to-tracked mode.
 
-## Installation
+## Build
 
 ```bash
-./scripts/install-bastion-cli.sh --editable
+cd bastion-session
+go build -o bastion-session ./cmd/bastion-session
 ```
 
 ## Usage
 
 ```bash
-bastion-session refresh --ssh-public-key ~/.ssh/keys/mykey.pub
-bastion-session status
-bastion-session watch --interval 600
+./bastion-session refresh --ssh-public-key ~/.ssh/keys/mykey.pub
+./bastion-session status
+./bastion-session watch --interval 600
+./bastion-session list-bastions --source scoped
+./bastion-session tui
 ```
+
+## Python Deprecation
+
+- The legacy Python implementation has been removed from this repository.
+- `bastion-session` is now Go-only (CLI + TUI).
 
 Ensure your `~/.ssh/config` includes:
 
@@ -30,7 +40,21 @@ Ensure your `~/.ssh/config` includes:
 Include ~/.ssh/config.d/bastion-session
 ```
 
-Optionally supply a path to Terraform outputs via `TERRAFORM_OUTPUTS` environment variable.
+## Context Scoping
+
+By default, bastion-session loads your current `oci-context` and scopes operations by it.
+
+- Disable scoping for a command: `--no-context-scope`
+- Force global oci-context config: `--global`
+- Use explicit oci-context file: `--oci-context-config /path/to/config.yml`
+
+In TUI:
+
+- Scoped mode is default (banner shows active context).
+- Press `e` to escape to tracked bastions.
+- Press `s` to return to scoped bastions.
+- Press `r` to refresh list.
+- Press `Enter` to select a bastion ID.
 
 ## Background Services
 

@@ -1,36 +1,41 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/bastion_session_cli/`: CLI entrypoints, runtime orchestration, and OCI integrations.
-- `tests/`: Pytest suite covering config parsing, session cache, and runtime flows.
+- `cmd/bastion-session/`: Go binary entrypoint.
+- `internal/app/`: Core domain logic (OCI client, runtime, context scope, tracking, state).
+- `internal/cmd/`: Cobra command wiring and TUI entrypoints.
 - `assets/`: systemd and launchd templates for background services.
-- `README.md`: Installation, usage, and background service guidance.
+- `README.md`: Build, usage, context scoping, and service setup.
 
 ## Build, Test, and Development Commands
-- `python -m venv .venv && source .venv/bin/activate`: Create and enter an isolated environment.
-- `pip install -e .`: Install the CLI in editable mode.
-- `pytest`: Run the automated test suite.
-- `bastion-session status`: Smoke-test the CLI against configured OCI credentials.
+- `go build -o bastion-session ./cmd/bastion-session`: Build CLI binary.
+- `go test ./...`: Run automated test suite.
+- `go run ./cmd/bastion-session --help`: Smoke-test CLI wiring.
+- `go run ./cmd/bastion-session status`: Runtime smoke-test against OCI config.
 
 ## Coding Style & Naming Conventions
-- Target Python 3.10+ with 4-space indentation and snake_case identifiers.
-- Keep module boundaries focused: CLI in `main.py`, orchestration in `runtime.py`, OCI calls in `oci_client.py`.
-- Preserve type hints and `Path` usage; prefer `rich` for formatted console output.
-- Introduce new Click options with descriptive names and help strings.
+- Follow idiomatic Go formatting (`gofmt`) and package naming conventions.
+- Keep command orchestration in `internal/cmd` and business logic in `internal/app`.
+- Prefer small, composable functions and explicit error propagation.
+- New CLI flags should have descriptive names and help text.
 
 ## Testing Guidelines
-- Add tests under `tests/` mirroring module names (e.g., `test_runtime.py`).
-- Cover new CLI flags, cache logic, and OCI interactions with parametrized cases.
-- Use temporary directory fixtures for filesystem operations and clean up SSH fragments.
-- Run `pytest` before PRs and capture output in the PR description.
+- Add tests as `*_test.go` near the package under test.
+- Cover runtime behavior, config/path resolution, and OCI parsing edge cases.
+- Use `t.TempDir()` for filesystem state and keep tests deterministic.
+- Run `go test ./...` before opening PRs.
 
 ## Commit & Pull Request Guidelines
-- Follow Conventional Commits (`feat`, `fix`, `chore`, `refactor`) as seen in history.
-- Keep commits atomic with imperative summaries; explain configuration or flag changes in the body.
-- PRs should outline intent, notable changes, test evidence, and linked issues.
-- Include screenshots or snippets for terminal output or service manifest updates.
+- Follow Conventional Commits (`feat`, `fix`, `chore`, `refactor`).
+- Keep commits atomic with imperative summaries.
+- PRs should include intent, key changes, and test evidence.
+- Include terminal snippets/screenshots for notable CLI/TUI behavior changes.
 
 ## Security & Configuration Tips
-- Never commit OCI credentials, keys, or Terraform state; rely on environment variables.
-- Document new configuration knobs in `Config.from_env()` docstrings and README updates.
-- Confirm generated SSH fragments stay under `~/.ssh/config.d/bastion-session` before merging.
+- Never commit OCI credentials, keys, or Terraform state.
+- Prefer environment/flag-driven configuration; document new knobs in README.
+- Ensure generated SSH fragments remain under `~/.ssh/config.d/bastion-session`.
+
+## Python Deprecation
+- The legacy Python package (`pyproject.toml`, `src/bastion_session_cli`, `tests/*.py`) is removed.
+- `bastion-session` is now Go-only.

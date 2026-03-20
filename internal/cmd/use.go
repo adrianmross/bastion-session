@@ -17,6 +17,7 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 	var region string
 	var compartmentID string
 	var contextName string
+	var keyOverride string
 
 	cmd := &cobra.Command{
 		Use:   "use <bastion-ocid>",
@@ -51,6 +52,7 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 							Region:        b.Region,
 							Profile:       b.Profile,
 							AuthMethod:    b.AuthMethod,
+							SSHPublicKey:  b.SSHPublicKey,
 							ContextName:   b.ContextName,
 							Source:        "tracked",
 							SelectedAt:    time.Now().UTC(),
@@ -78,6 +80,7 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 							Region:        b.Region,
 							Profile:       b.Profile,
 							AuthMethod:    opts.cfg.AuthMethod,
+							SSHPublicKey:  opts.cfg.SSHPublicKey,
 							ContextName:   b.ScopeContext,
 							Source:        "scoped",
 							SelectedAt:    time.Now().UTC(),
@@ -102,10 +105,17 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 					Region:        region,
 					Profile:       profile,
 					AuthMethod:    opts.cfg.AuthMethod,
+					SSHPublicKey:  opts.cfg.SSHPublicKey,
 					ContextName:   contextName,
 					Source:        source,
 					SelectedAt:    time.Now().UTC(),
 				}
+			}
+			if strings.TrimSpace(keyOverride) != "" {
+				cur.SSHPublicKey = strings.TrimSpace(keyOverride)
+			}
+			if strings.TrimSpace(cur.SSHPublicKey) == "" {
+				cur.SSHPublicKey = app.ResolvePublicKey(opts.cfg)
 			}
 
 			if err := app.SaveCurrent(opts.cfg.CurrentStatePath, cur); err != nil {
@@ -118,6 +128,7 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 				Region:        cur.Region,
 				Profile:       cur.Profile,
 				AuthMethod:    cur.AuthMethod,
+				SSHPublicKey:  cur.SSHPublicKey,
 				ContextName:   cur.ContextName,
 				LastSeenAt:    time.Now().UTC(),
 			})
@@ -131,5 +142,6 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVarP(&region, "region", "r", "", "Region override for explicit/manual selection")
 	cmd.Flags().StringVar(&compartmentID, "compartment-id", "", "Compartment OCID for explicit/manual selection")
 	cmd.Flags().StringVar(&contextName, "context", "", "Context label for explicit/manual selection")
+	cmd.Flags().StringVar(&keyOverride, "key", "", "Preferred SSH public key path for this bastion selection")
 	return cmd
 }

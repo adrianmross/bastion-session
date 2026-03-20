@@ -8,7 +8,7 @@ import (
 
 func TestUpsertTracked(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "tracked.json")
-	first := TrackedBastion{ID: "ocid1.bastion", Name: "b1", LastSeenAt: time.Now().Add(-time.Hour)}
+	first := TrackedBastion{ID: "ocid1.bastion", Name: "b1", SSHPublicKey: "/tmp/a.pub", LastSeenAt: time.Now().Add(-time.Hour)}
 	if err := UpsertTracked(p, first); err != nil {
 		t.Fatal(err)
 	}
@@ -25,5 +25,8 @@ func TestUpsertTracked(t *testing.T) {
 	}
 	if items[0].Name != "b1-new" {
 		t.Fatalf("expected updated name, got %s", items[0].Name)
+	}
+	if items[0].SSHPublicKey != "/tmp/a.pub" {
+		t.Fatalf("expected ssh key to be preserved, got %s", items[0].SSHPublicKey)
 	}
 }

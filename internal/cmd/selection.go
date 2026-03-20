@@ -24,6 +24,9 @@ func loadCurrentSelection(cfg *app.Config) (*app.CurrentBastion, error) {
 	if strings.TrimSpace(cfg.AuthMethod) == "" && strings.TrimSpace(cur.AuthMethod) != "" {
 		cfg.AuthMethod = cur.AuthMethod
 	}
+	if strings.TrimSpace(cfg.SSHPublicKey) == "" && strings.TrimSpace(cur.SSHPublicKey) != "" {
+		cfg.SSHPublicKey = cur.SSHPublicKey
+	}
 	return cur, nil
 }
 

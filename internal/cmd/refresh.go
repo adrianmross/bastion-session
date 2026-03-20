@@ -9,10 +9,14 @@ import (
 )
 
 func newRefreshCmd(opts *rootOptions) *cobra.Command {
-	return &cobra.Command{
+	var keyOverride string
+	cmd := &cobra.Command{
 		Use:   "refresh",
 		Short: "Create or refresh a bastion session",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if keyOverride != "" {
+				opts.cfg.SSHPublicKey = keyOverride
+			}
 			cur, err := loadCurrentSelection(&opts.cfg)
 			if err != nil {
 				return err
@@ -33,4 +37,6 @@ func newRefreshCmd(opts *rootOptions) *cobra.Command {
 			return err
 		},
 	}
+	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override for this refresh")
+	return cmd
 }

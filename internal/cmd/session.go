@@ -26,11 +26,15 @@ func newSessionNewCmd(opts *rootOptions) *cobra.Command {
 	var bastionID string
 	var instanceID string
 	var privateIP string
+	var keyOverride string
 	cmd := &cobra.Command{
 		Use:   "new [bastion-id-or-ref]",
 		Short: "Create a new bastion session (explicit create/renew path)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if keyOverride != "" {
+				opts.cfg.SSHPublicKey = keyOverride
+			}
 			if strings.TrimSpace(bastionID) == "" && len(args) == 1 {
 				bastionID = strings.TrimSpace(args[0])
 			}
@@ -57,6 +61,7 @@ func newSessionNewCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&bastionID, "bastion-id", "", "Bastion OCID (defaults to current selected bastion)")
 	cmd.Flags().StringVar(&instanceID, "instance-id", "", "Target instance OCID override (otherwise Terraform outputs)")
 	cmd.Flags().StringVar(&privateIP, "private-ip", "", "Target private IP override (otherwise Terraform outputs)")
+	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override for this session creation")
 	return cmd
 }
 

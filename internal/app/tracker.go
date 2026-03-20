@@ -15,6 +15,7 @@ type TrackedBastion struct {
 	Region        string    `json:"region" yaml:"region"`
 	Profile       string    `json:"profile" yaml:"profile"`
 	AuthMethod    string    `json:"auth_method,omitempty" yaml:"auth_method,omitempty"`
+	SSHPublicKey  string    `json:"ssh_public_key,omitempty" yaml:"ssh_public_key,omitempty"`
 	ContextName   string    `json:"context_name,omitempty" yaml:"context_name,omitempty"`
 	LastSeenAt    time.Time `json:"last_seen_at" yaml:"last_seen_at"`
 }
@@ -26,6 +27,7 @@ type CurrentBastion struct {
 	Region        string    `json:"region" yaml:"region"`
 	Profile       string    `json:"profile" yaml:"profile"`
 	AuthMethod    string    `json:"auth_method,omitempty" yaml:"auth_method,omitempty"`
+	SSHPublicKey  string    `json:"ssh_public_key,omitempty" yaml:"ssh_public_key,omitempty"`
 	ContextName   string    `json:"context_name,omitempty" yaml:"context_name,omitempty"`
 	Source        string    `json:"source,omitempty" yaml:"source,omitempty"`
 	SelectedAt    time.Time `json:"selected_at" yaml:"selected_at"`
@@ -101,6 +103,9 @@ func UpsertTracked(path string, items ...TrackedBastion) error {
 			}
 			if b.AuthMethod != "" {
 				cur.AuthMethod = b.AuthMethod
+			}
+			if b.SSHPublicKey != "" {
+				cur.SSHPublicKey = b.SSHPublicKey
 			}
 			if b.ContextName != "" {
 				cur.ContextName = b.ContextName

@@ -66,6 +66,9 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		Region:     cfg.Region,
 		Profile:    cfg.Profile,
 		AuthMethod: cfg.AuthMethod,
+		SSHPublicKey: func() string {
+			return cfg.SSHPublicKey
+		}(),
 		CompartmentID: func() string {
 			if cfg.ScopedContext != nil {
 				return cfg.ScopedContext.CompartmentOCID
@@ -263,6 +266,7 @@ func ListScopedBastions(cfg Config) ([]BastionInfo, error) {
 			Region:        cfg.Region,
 			Profile:       cfg.Profile,
 			AuthMethod:    cfg.AuthMethod,
+			SSHPublicKey:  cfg.SSHPublicKey,
 			ContextName:   ctxName,
 			LastSeenAt:    time.Now().UTC(),
 		})

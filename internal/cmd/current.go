@@ -30,6 +30,7 @@ func newCurrentCmd(opts *rootOptions) *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "source: %s\n", emptyDash(cur.Source))
 				fmt.Fprintf(cmd.OutOrStdout(), "profile: %s\n", emptyDash(cur.Profile))
 				fmt.Fprintf(cmd.OutOrStdout(), "region: %s\n", emptyDash(cur.Region))
+				fmt.Fprintf(cmd.OutOrStdout(), "ssh_public_key: %s\n", emptyDash(cur.SSHPublicKey))
 				fmt.Fprintf(cmd.OutOrStdout(), "compartment: %s\n", emptyDash(cur.CompartmentID))
 				fmt.Fprintf(cmd.OutOrStdout(), "context: %s\n", emptyDash(cur.ContextName))
 				fmt.Fprintf(cmd.OutOrStdout(), "selected_at: %s\n", cur.SelectedAt.Format("2006-01-02T15:04:05Z07:00"))

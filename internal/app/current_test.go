@@ -13,6 +13,7 @@ func TestSaveLoadCurrent(t *testing.T) {
 		CompartmentID: "ocid1.compartment",
 		Region:        "us-chicago-1",
 		Profile:       "oabcs1-terraform",
+		SSHPublicKey:  "/Users/test/.ssh/id_ed25519.pub",
 		ContextName:   "dev",
 		Source:        "tracked",
 	}
@@ -23,7 +24,7 @@ func TestSaveLoadCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out == nil || out.ID != in.ID || out.Profile != in.Profile || out.Source != in.Source {
+	if out == nil || out.ID != in.ID || out.Profile != in.Profile || out.Source != in.Source || out.SSHPublicKey != in.SSHPublicKey {
 		t.Fatalf("unexpected current selection: %#v", out)
 	}
 }

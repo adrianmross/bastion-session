@@ -13,10 +13,14 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 	var sessionToken string
 	var instanceID string
 	var privateIP string
+	var keyOverride string
 	cmd := &cobra.Command{
 		Use:   "connect",
 		Short: "Connect using existing session or by creating a new one",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if keyOverride != "" {
+				opts.cfg.SSHPublicKey = keyOverride
+			}
 			cur, err := loadCurrentSelection(&opts.cfg)
 			if err != nil {
 				return err
@@ -83,5 +87,6 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&bastionID, "bastion-id", "", "Bastion OCID (defaults to current selected bastion)")
 	cmd.Flags().StringVar(&instanceID, "instance-id", "", "Target instance OCID override (otherwise Terraform outputs)")
 	cmd.Flags().StringVar(&privateIP, "private-ip", "", "Target private IP override (otherwise Terraform outputs)")
+	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override when creating a new session")
 	return cmd
 }

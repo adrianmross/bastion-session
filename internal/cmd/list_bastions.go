@@ -10,6 +10,7 @@ import (
 )
 
 type bastionRow struct {
+	Ref           string `json:"ref" yaml:"ref"`
 	ID            string `json:"id" yaml:"id"`
 	Name          string `json:"name" yaml:"name"`
 	Lifecycle     string `json:"lifecycle" yaml:"lifecycle"`
@@ -34,8 +35,14 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				ids := make([]string, 0, len(scoped))
+				for _, b := range scoped {
+					ids = append(ids, b.ID)
+				}
+				refs := app.BuildShortRefs(ids, 2)
 				for _, b := range scoped {
 					rows = append(rows, bastionRow{
+						Ref:           refs[b.ID],
 						ID:            b.ID,
 						Name:          b.Name,
 						Lifecycle:     b.LifecycleState,
@@ -52,8 +59,14 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				ids := make([]string, 0, len(tracked))
+				for _, b := range tracked {
+					ids = append(ids, b.ID)
+				}
+				refs := app.BuildShortRefs(ids, 2)
 				for _, b := range tracked {
 					rows = append(rows, bastionRow{
+						Ref:           refs[b.ID],
 						ID:            b.ID,
 						Name:          b.Name,
 						Lifecycle:     "",
@@ -72,6 +85,10 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 					return nil
 				}
 				for _, r := range rows {
+					ref := r.Ref
+					if ref == "" {
+						ref = "-"
+					}
 					name := r.Name
 					if name == "" {
 						name = "-"
@@ -84,7 +101,7 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 					if life == "" {
 						life = "-"
 					}
-					fmt.Fprintf(os.Stdout, "%s  name=%s  lifecycle=%s  context=%s  source=%s\n", r.ID, name, life, ctx, r.Source)
+					fmt.Fprintf(os.Stdout, "%s  id=%s  name=%s  lifecycle=%s  context=%s  source=%s\n", ref, r.ID, name, life, ctx, r.Source)
 				}
 				return nil
 			case "json":

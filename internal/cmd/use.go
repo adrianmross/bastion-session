@@ -23,7 +23,7 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 		Short: "Select a current bastion from scoped/tracked sources or explicit details",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id := strings.TrimSpace(args[0])
+			token := strings.TrimSpace(args[0])
 			source = strings.ToLower(strings.TrimSpace(source))
 			if source == "" {
 				source = "tracked"
@@ -37,8 +37,13 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				ids := make([]string, 0, len(tracked))
 				for _, b := range tracked {
-					if b.ID == id {
+					ids = append(ids, b.ID)
+				}
+				refs := app.BuildShortRefs(ids, 2)
+				for _, b := range tracked {
+					if b.ID == token || refs[b.ID] == token {
 						cur = app.CurrentBastion{
 							ID:            b.ID,
 							Name:          b.Name,
@@ -58,8 +63,13 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				ids := make([]string, 0, len(scoped))
 				for _, b := range scoped {
-					if b.ID == id {
+					ids = append(ids, b.ID)
+				}
+				refs := app.BuildShortRefs(ids, 2)
+				for _, b := range scoped {
+					if b.ID == token || refs[b.ID] == token {
 						cur = app.CurrentBastion{
 							ID:            b.ID,
 							Name:          b.Name,
@@ -81,10 +91,10 @@ func newUseCmd(opts *rootOptions) *cobra.Command {
 			if !found {
 				// Manual explicit selection path when full details are provided.
 				if strings.TrimSpace(profile) == "" || strings.TrimSpace(region) == "" || strings.TrimSpace(compartmentID) == "" {
-					return fmt.Errorf("bastion %s not found in %s; provide --profile, --region, and --compartment-id for explicit use", id, source)
+					return fmt.Errorf("bastion %s not found in %s; provide --profile, --region, and --compartment-id for explicit use", token, source)
 				}
 				cur = app.CurrentBastion{
-					ID:            id,
+					ID:            token,
 					Name:          name,
 					CompartmentID: compartmentID,
 					Region:        region,

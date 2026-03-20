@@ -23,7 +23,9 @@ func newCurrentCmd(opts *rootOptions) *cobra.Command {
 			}
 			switch strings.ToLower(output) {
 			case "", "table":
+				ref := app.BuildShortRefs([]string{cur.ID}, 2)[cur.ID]
 				fmt.Fprintf(cmd.OutOrStdout(), "id: %s\n", cur.ID)
+				fmt.Fprintf(cmd.OutOrStdout(), "ref: %s\n", emptyDash(ref))
 				fmt.Fprintf(cmd.OutOrStdout(), "name: %s\n", emptyDash(cur.Name))
 				fmt.Fprintf(cmd.OutOrStdout(), "source: %s\n", emptyDash(cur.Source))
 				fmt.Fprintf(cmd.OutOrStdout(), "profile: %s\n", emptyDash(cur.Profile))

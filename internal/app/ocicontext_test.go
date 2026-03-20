@@ -36,6 +36,7 @@ func TestLoadCurrentOCIContext(t *testing.T) {
 contexts:
   - name: dev
     profile: DEFAULT
+    auth_method: security_token
     tenancy_ocid: ocid1.tenancy
     compartment_ocid: ocid1.compartment
     region: us-phoenix-1
@@ -48,7 +49,7 @@ contexts:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ctx.Name != "dev" || ctx.Profile != "DEFAULT" || ctx.CompartmentOCID != "ocid1.compartment" {
+	if ctx.Name != "dev" || ctx.Profile != "DEFAULT" || ctx.AuthMethod != "security_token" || ctx.CompartmentOCID != "ocid1.compartment" {
 		t.Fatalf("unexpected context: %#v", ctx)
 	}
 }

@@ -42,7 +42,8 @@ Include ~/.ssh/config.d/bastion-session
 
 ## Context Scoping
 
-By default, bastion-session loads your current `oci-context` and scopes operations by it.
+By default, bastion-session loads your current `oci-context` and scopes operations by it
+(profile, auth method, region, compartment).
 
 - Disable scoping for a command: `--no-context-scope`
 - Force global oci-context config: `--global`

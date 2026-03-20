@@ -17,6 +17,7 @@ type ociContextConfig struct {
 type ociContextEntry struct {
 	Name            string `yaml:"name" json:"name"`
 	Profile         string `yaml:"profile" json:"profile"`
+	AuthMethod      string `yaml:"auth_method" json:"auth_method"`
 	TenancyOCID     string `yaml:"tenancy_ocid" json:"tenancy_ocid"`
 	CompartmentOCID string `yaml:"compartment_ocid" json:"compartment_ocid"`
 	Region          string `yaml:"region" json:"region"`
@@ -82,6 +83,7 @@ func LoadCurrentOCIContext(path string) (*ContextRef, error) {
 			return &ContextRef{
 				Name:            c.Name,
 				Profile:         c.Profile,
+				AuthMethod:      c.AuthMethod,
 				Region:          c.Region,
 				CompartmentOCID: c.CompartmentOCID,
 				TenancyOCID:     c.TenancyOCID,

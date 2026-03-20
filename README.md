@@ -30,6 +30,9 @@ go build -o bastion-session ./cmd/bastion-session
 # Use either full OCID or short unique ref from list (2-3 chars when possible)
 ./bastion-session use <ref-or-bastion-ocid> --source tracked
 ./bastion-session current
+./bastion-session connect
+./bastion-session session list
+./bastion-session session use <session-id-or-ref>
 ./bastion-session tui
 ```
 

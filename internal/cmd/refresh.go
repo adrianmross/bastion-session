@@ -13,7 +13,15 @@ func newRefreshCmd(opts *rootOptions) *cobra.Command {
 		Use:   "refresh",
 		Short: "Create or refresh a bastion session",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			session, err := app.RefreshSession(opts.cfg)
+			cur, err := loadCurrentSelection(&opts.cfg)
+			if err != nil {
+				return err
+			}
+			refreshOpts := app.RefreshOptions{}
+			if cur != nil && cur.ID != "" {
+				refreshOpts.BastionID = cur.ID
+			}
+			session, err := app.RefreshSessionWithTarget(opts.cfg, refreshOpts)
 			if err != nil {
 				return err
 			}

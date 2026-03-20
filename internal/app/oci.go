@@ -41,6 +41,16 @@ type OCIClient struct {
 	AuthMethod string
 }
 
+type SessionInfo struct {
+	ID             string    `json:"id" yaml:"id"`
+	BastionID      string    `json:"bastion_id" yaml:"bastion_id"`
+	LifecycleState string    `json:"lifecycle_state" yaml:"lifecycle_state"`
+	TimeCreated    time.Time `json:"time_created" yaml:"time_created"`
+	TimeExpires    time.Time `json:"time_expires" yaml:"time_expires"`
+	TargetResource string    `json:"target_resource_id" yaml:"target_resource_id"`
+	TargetPrivate  string    `json:"target_private_ip" yaml:"target_private_ip"`
+}
+
 func (c OCIClient) run(args ...string) ([]byte, error) {
 	cmdArgs := []string{"--profile", c.Profile}
 	if c.Region != "" {
@@ -151,6 +161,57 @@ func (c OCIClient) ListBastions(compartmentID string) ([]BastionInfo, error) {
 		result = append(result, bi)
 	}
 	return result, nil
+}
+
+func (c OCIClient) ListSessions(bastionID string) ([]SessionInfo, error) {
+	args := []string{"bastion", "session", "list", "--query", "data", "--raw-output"}
+	if strings.TrimSpace(bastionID) != "" {
+		args = append(args, "--bastion-id", bastionID)
+	}
+	out, err := c.run(args...)
+	if err != nil {
+		return nil, err
+	}
+	out = bytes.TrimSpace(out)
+	if len(out) == 0 {
+		return []SessionInfo{}, nil
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal(out, &rows); err != nil {
+		const maxPreview = 256
+		preview := string(out)
+		if len(preview) > maxPreview {
+			preview = preview[:maxPreview] + "..."
+		}
+		return nil, fmt.Errorf("failed to parse OCI session list output as JSON: %w (output=%q)", err, preview)
+	}
+	items := make([]SessionInfo, 0, len(rows))
+	for _, row := range rows {
+		s := SessionInfo{
+			ID:             asString(row, "id"),
+			BastionID:      asString(row, "bastionId", "bastion-id", "bastion_id"),
+			LifecycleState: asString(row, "lifecycleState", "lifecycle-state", "lifecycle_state"),
+			TargetResource: asString(row, "targetResourceId", "target-resource-id", "target_resource_id"),
+			TargetPrivate:  asString(row, "targetResourceDetails.privateIpAddress", "target-private-ip", "target_private_ip"),
+		}
+		if t := asString(row, "timeCreated", "time-created", "time_created"); t != "" {
+			if ts, err := time.Parse(time.RFC3339, t); err == nil {
+				s.TimeCreated = ts
+			}
+		}
+		if t := asString(row, "timeExpires", "time-expires", "time_expires"); t != "" {
+			if ts, err := time.Parse(time.RFC3339, t); err == nil {
+				s.TimeExpires = ts
+			}
+		}
+		if s.TimeExpires.IsZero() {
+			if ttl := asInt(row, "sessionTtlInSeconds", "session-ttl-in-seconds", "session_ttl_in_seconds"); ttl > 0 && !s.TimeCreated.IsZero() {
+				s.TimeExpires = s.TimeCreated.Add(time.Duration(ttl) * time.Second)
+			}
+		}
+		items = append(items, s)
+	}
+	return items, nil
 }
 
 func parseSessionJSON(out []byte) (BastionSession, error) {

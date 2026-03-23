@@ -11,6 +11,8 @@ import (
 )
 
 var version = "dev"
+var commit = "none"
+var date = "unknown"
 
 type rootOptions struct {
 	profile          string
@@ -34,6 +36,8 @@ type rootOptions struct {
 
 func newRootCmd() *cobra.Command {
 	opts := &rootOptions{}
+	var versionCount int
+	var verboseVersion bool
 	cmd := &cobra.Command{
 		Use:           "bastion-session",
 		Short:         "OCI bastion session manager (Go rewrite with context-aware CLI/TUI)",
@@ -92,15 +96,19 @@ func newRootCmd() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = args
-			if v, _ := cmd.Flags().GetBool("version"); v {
+			if versionCount > 0 || verboseVersion {
+				if versionCount > 1 || verboseVersion {
+					_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s (commit=%s date=%s)\n", version, commit, date)
+					return err
+				}
 				_, err := fmt.Fprintln(cmd.OutOrStdout(), version)
 				return err
 			}
 			return cmd.Help()
 		},
 	}
-	cmd.Version = version
-	cmd.Flags().BoolP("version", "v", false, "Print version")
+	cmd.Flags().CountVarP(&versionCount, "version", "v", "Print version (-vv for commit/date details)")
+	cmd.Flags().BoolVar(&verboseVersion, "vversion", false, "Print version with commit/date details")
 
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&opts.profile, "profile", "p", "", "OCI profile name")
@@ -128,6 +136,7 @@ func newRootCmd() *cobra.Command {
 		newCurrentCmd(opts),
 		newTrackCmd(opts),
 		newSessionCmd(opts),
+		newServiceCmd(opts),
 		newTUICmd(opts),
 	)
 	return cmd

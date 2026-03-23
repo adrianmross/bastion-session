@@ -1,0 +1,39 @@
+version: 2
+
+project_name: bastion-session
+
+before:
+  hooks:
+    - go mod download
+    - go test ./...
+
+builds:
+  - id: bastion-session
+    main: ./cmd/bastion-session
+    binary: bastion-session
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X github.com/adrianmross/bastion-session/internal/cmd.version={{.Version}} -X github.com/adrianmross/bastion-session/internal/cmd.commit={{.ShortCommit}} -X github.com/adrianmross/bastion-session/internal/cmd.date={{.Date}}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  draft: false
+  prerelease: auto

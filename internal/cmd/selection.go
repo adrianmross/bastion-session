@@ -15,13 +15,16 @@ func loadCurrentSelection(cfg *app.Config) (*app.CurrentBastion, error) {
 	if cur == nil {
 		return nil, nil
 	}
-	if (cfg.Profile == "" || cfg.Profile == app.DefaultProfile) && strings.TrimSpace(cur.Profile) != "" {
+	// When oci-context scoping is active, keep scoped profile/region/auth authoritative
+	// and avoid importing potentially stale tracked metadata into command execution config.
+	allowIdentityOverrideFromCurrent := cfg.ScopedContext == nil
+	if allowIdentityOverrideFromCurrent && (cfg.Profile == "" || cfg.Profile == app.DefaultProfile) && strings.TrimSpace(cur.Profile) != "" {
 		cfg.Profile = cur.Profile
 	}
-	if (cfg.Region == "" || cfg.Region == app.DefaultRegion) && strings.TrimSpace(cur.Region) != "" {
+	if allowIdentityOverrideFromCurrent && (cfg.Region == "" || cfg.Region == app.DefaultRegion) && strings.TrimSpace(cur.Region) != "" {
 		cfg.Region = cur.Region
 	}
-	if strings.TrimSpace(cfg.AuthMethod) == "" && strings.TrimSpace(cur.AuthMethod) != "" {
+	if allowIdentityOverrideFromCurrent && strings.TrimSpace(cfg.AuthMethod) == "" && strings.TrimSpace(cur.AuthMethod) != "" {
 		cfg.AuthMethod = cur.AuthMethod
 	}
 	if strings.TrimSpace(cfg.SSHPublicKey) == "" && strings.TrimSpace(cur.SSHPublicKey) != "" {

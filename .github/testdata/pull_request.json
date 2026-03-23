@@ -3,13 +3,13 @@
     "head": {
       "ref": "feature/test",
       "repo": {
-        "full_name": "adrianmross/oci-context"
+        "full_name": "adrianmross/bastion-session"
       }
     },
     "base": {
       "ref": "main",
       "repo": {
-        "full_name": "adrianmross/oci-context"
+        "full_name": "adrianmross/bastion-session"
       }
     }
   }

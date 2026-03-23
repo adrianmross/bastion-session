@@ -151,6 +151,12 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						return it.scoped.Profile
 					}(),
+					SSHPublicKey: func() string {
+						if it.source == "tracked" {
+							return it.tracked.SSHPublicKey
+						}
+						return m.cfg.SSHPublicKey
+					}(),
 					ContextName: func() string {
 						if it.source == "tracked" {
 							return it.tracked.ContextName

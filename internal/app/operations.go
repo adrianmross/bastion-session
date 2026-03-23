@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -23,25 +24,10 @@ type RefreshOptions struct {
 }
 
 func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, error) {
-	metadata := SessionMetadata{}
-	if strings.TrimSpace(opts.BastionID) == "" || strings.TrimSpace(opts.InstanceID) == "" || strings.TrimSpace(opts.PrivateIP) == "" {
-		fromTF, err := LoadTargetDetails(cfg)
-		if err != nil {
-			return BastionSession{}, err
-		}
-		metadata = fromTF
-	}
-	if strings.TrimSpace(opts.BastionID) != "" {
-		metadata.BastionID = strings.TrimSpace(opts.BastionID)
-	}
-	if strings.TrimSpace(opts.InstanceID) != "" {
-		metadata.InstanceID = strings.TrimSpace(opts.InstanceID)
-	}
-	if strings.TrimSpace(opts.PrivateIP) != "" {
-		metadata.PrivateIP = strings.TrimSpace(opts.PrivateIP)
-	}
-	if metadata.BastionID == "" || metadata.InstanceID == "" || metadata.PrivateIP == "" {
-		return BastionSession{}, fmt.Errorf("bastion_id, instance_id, and private_ip are required")
+	client := OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
+	metadata, err := resolveTargetMetadata(cfg, client, opts)
+	if err != nil {
+		return BastionSession{}, err
 	}
 	pub := cfg.SSHPublicKey
 	if strings.TrimSpace(pub) == "" {
@@ -52,7 +38,6 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 	}
 	cfg.SSHPublicKey = pub
 
-	client := OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
 	created, err := client.CreateSession(TargetDetails{
 		BastionID:     metadata.BastionID,
 		InstanceID:    metadata.InstanceID,
@@ -77,9 +62,13 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		return BastionSession{}, err
 	}
 	_ = UpsertTracked(cfg.TrackedBastionsPath, TrackedBastion{
-		ID:      metadata.BastionID,
-		Region:  cfg.Region,
-		Profile: cfg.Profile,
+		ID:         metadata.BastionID,
+		Region:     cfg.Region,
+		Profile:    cfg.Profile,
+		AuthMethod: cfg.AuthMethod,
+		SSHPublicKey: func() string {
+			return cfg.SSHPublicKey
+		}(),
 		CompartmentID: func() string {
 			if cfg.ScopedContext != nil {
 				return cfg.ScopedContext.CompartmentOCID
@@ -95,6 +84,130 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		LastSeenAt: time.Now().UTC(),
 	})
 	return active, nil
+}
+
+func resolveTargetMetadata(cfg Config, client OCIClient, opts RefreshOptions) (SessionMetadata, error) {
+	metadata := SessionMetadata{
+		BastionID:  strings.TrimSpace(opts.BastionID),
+		InstanceID: strings.TrimSpace(opts.InstanceID),
+		PrivateIP:  strings.TrimSpace(opts.PrivateIP),
+	}
+	if metadata.BastionID == "" || metadata.InstanceID == "" || metadata.PrivateIP == "" {
+		if err := fillFromCachedAndLiveSession(cfg, client, &metadata); err != nil {
+			return SessionMetadata{}, err
+		}
+	}
+	if metadata.BastionID == "" || metadata.InstanceID == "" || metadata.PrivateIP == "" {
+		if fromTF, err := LoadTargetDetails(cfg); err == nil {
+			if metadata.BastionID == "" {
+				metadata.BastionID = strings.TrimSpace(fromTF.BastionID)
+			}
+			if metadata.InstanceID == "" {
+				metadata.InstanceID = strings.TrimSpace(fromTF.InstanceID)
+			}
+			if metadata.PrivateIP == "" {
+				metadata.PrivateIP = strings.TrimSpace(fromTF.PrivateIP)
+			}
+		}
+	}
+	if metadata.BastionID == "" || metadata.InstanceID == "" || metadata.PrivateIP == "" {
+		return SessionMetadata{}, fmt.Errorf("unable to resolve bastion target details; pass --instance-id and --private-ip, or ensure an existing session with target details")
+	}
+	return metadata, nil
+}
+
+func fillFromCachedAndLiveSession(cfg Config, client OCIClient, metadata *SessionMetadata) error {
+	cached, err := LoadSession(cfg.SessionStatePath)
+	if err != nil {
+		return err
+	}
+	if cached != nil {
+		applySessionMetadata(metadata, *cached)
+		if metadata.InstanceID != "" && metadata.PrivateIP != "" && metadata.BastionID != "" {
+			return nil
+		}
+		if strings.TrimSpace(cached.ID) != "" {
+			if live, getErr := client.GetSession(strings.TrimSpace(cached.ID)); getErr == nil {
+				applySessionMetadata(metadata, live)
+				if metadata.InstanceID != "" && metadata.PrivateIP != "" && metadata.BastionID != "" {
+					return nil
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(metadata.BastionID) == "" {
+		return nil
+	}
+	sessions, err := client.ListSessions(strings.TrimSpace(metadata.BastionID))
+	if err != nil {
+		return nil
+	}
+	if len(sessions) == 0 {
+		return nil
+	}
+	candidates := make([]SessionInfo, 0, len(sessions))
+	for _, s := range sessions {
+		if strings.TrimSpace(s.TargetResource) == "" || strings.TrimSpace(s.TargetPrivate) == "" {
+			continue
+		}
+		candidates = append(candidates, s)
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	slices.SortFunc(candidates, func(a, b SessionInfo) int {
+		if a.TimeCreated.Equal(b.TimeCreated) {
+			return strings.Compare(a.ID, b.ID)
+		}
+		if a.TimeCreated.After(b.TimeCreated) {
+			return -1
+		}
+		return 1
+	})
+	for _, s := range candidates {
+		if strings.EqualFold(strings.TrimSpace(s.LifecycleState), "ACTIVE") {
+			applySessionInfo(metadata, s)
+			return nil
+		}
+	}
+	applySessionInfo(metadata, candidates[0])
+	return nil
+}
+
+func applySessionMetadata(metadata *SessionMetadata, session BastionSession) {
+	sBastionID := strings.TrimSpace(session.BastionID)
+	if sBastionID != "" {
+		if metadata.BastionID == "" {
+			metadata.BastionID = sBastionID
+		}
+		if metadata.BastionID != sBastionID {
+			return
+		}
+	}
+	if metadata.InstanceID == "" {
+		metadata.InstanceID = strings.TrimSpace(session.TargetResourceID)
+	}
+	if metadata.PrivateIP == "" {
+		metadata.PrivateIP = strings.TrimSpace(session.TargetPrivateIP)
+	}
+}
+
+func applySessionInfo(metadata *SessionMetadata, session SessionInfo) {
+	sBastionID := strings.TrimSpace(session.BastionID)
+	if sBastionID != "" {
+		if metadata.BastionID == "" {
+			metadata.BastionID = sBastionID
+		}
+		if metadata.BastionID != sBastionID {
+			return
+		}
+	}
+	if metadata.InstanceID == "" {
+		metadata.InstanceID = strings.TrimSpace(session.TargetResource)
+	}
+	if metadata.PrivateIP == "" {
+		metadata.PrivateIP = strings.TrimSpace(session.TargetPrivate)
+	}
 }
 
 func RefreshSession(cfg Config) (BastionSession, error) {
@@ -152,6 +265,8 @@ func ListScopedBastions(cfg Config) ([]BastionInfo, error) {
 			CompartmentID: items[i].CompartmentID,
 			Region:        cfg.Region,
 			Profile:       cfg.Profile,
+			AuthMethod:    cfg.AuthMethod,
+			SSHPublicKey:  cfg.SSHPublicKey,
 			ContextName:   ctxName,
 			LastSeenAt:    time.Now().UTC(),
 		})

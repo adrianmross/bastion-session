@@ -17,6 +17,7 @@ type bastionRow struct {
 	CompartmentID string `json:"compartment_id" yaml:"compartment_id"`
 	Region        string `json:"region" yaml:"region"`
 	Profile       string `json:"profile" yaml:"profile"`
+	SSHPublicKey  string `json:"ssh_public_key,omitempty" yaml:"ssh_public_key,omitempty"`
 	Context       string `json:"context,omitempty" yaml:"context,omitempty"`
 	Source        string `json:"source" yaml:"source"`
 }
@@ -73,6 +74,7 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 						CompartmentID: b.CompartmentID,
 						Region:        b.Region,
 						Profile:       b.Profile,
+						SSHPublicKey:  b.SSHPublicKey,
 						Context:       b.ContextName,
 						Source:        "tracked",
 					})
@@ -101,7 +103,11 @@ func newListCmd(opts *rootOptions) *cobra.Command {
 					if life == "" {
 						life = "-"
 					}
-					fmt.Fprintf(os.Stdout, "%s  id=%s  name=%s  lifecycle=%s  context=%s  source=%s\n", ref, r.ID, name, life, ctx, r.Source)
+					key := r.SSHPublicKey
+					if key == "" {
+						key = "-"
+					}
+					fmt.Fprintf(os.Stdout, "%s  id=%s  name=%s  lifecycle=%s  key=%s  context=%s  source=%s\n", ref, r.ID, name, life, key, ctx, r.Source)
 				}
 				return nil
 			case "json":

@@ -28,11 +28,17 @@ go build -o bastion-session ./cmd/bastion-session
 ./bastion-session list --source scoped
 ./bastion-session list --source tracked
 # Use either full OCID or short unique ref from list (2-3 chars when possible)
-./bastion-session use <ref-or-bastion-ocid> --source tracked
+./bastion-session use <ref-or-bastion-ocid> --source tracked --key ~/.ssh/id_ed25519.pub
 ./bastion-session current
-./bastion-session connect
+./bastion-session connect                       # create/refresh and connect
+./bastion-session connect --key ~/.ssh/id_ed25519.pub
+./bastion-session connect --session <sess-ref>  # reuse existing session
 ./bastion-session session list
+./bastion-session session new <bastion-ref>
+./bastion-session session new <bastion-ref> --key ~/.ssh/id_ed25519.pub
 ./bastion-session session use <session-id-or-ref>
+./bastion-session track rm <ref-or-ocid>
+./bastion-session track prune
 ./bastion-session tui
 ```
 

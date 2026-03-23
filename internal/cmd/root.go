@@ -126,6 +126,7 @@ func newRootCmd() *cobra.Command {
 		newListCmd(opts),
 		newUseCmd(opts),
 		newCurrentCmd(opts),
+		newTrackCmd(opts),
 		newSessionCmd(opts),
 		newTUICmd(opts),
 	)

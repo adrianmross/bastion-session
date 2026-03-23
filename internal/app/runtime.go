@@ -110,6 +110,13 @@ func ResolvePublicKey(cfg Config) string {
 			break
 		}
 	}
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		add(filepath.Join(home, ".ssh", "id_ed25519.pub"), "")
+		add(filepath.Join(home, ".ssh", "id_rsa.pub"), "")
+		add(filepath.Join(home, ".ssh", "id_ecdsa.pub"), "")
+		add(filepath.Join(home, ".ssh", "id_dsa.pub"), "")
+	}
 
 	for _, p := range candidates {
 		if st, err := os.Stat(p); err == nil && !st.IsDir() {

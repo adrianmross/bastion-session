@@ -51,3 +51,64 @@ func requireBastionID(current *app.CurrentBastion, explicit string) (string, err
 	}
 	return "", fmt.Errorf("no bastion selected; use `bastion-session use <id>` or pass --bastion-id")
 }
+
+func resolveBastionIDToken(cfg *app.Config, token string) (string, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", fmt.Errorf("empty bastion token")
+	}
+	if strings.HasPrefix(token, "ocid1.") {
+		return token, nil
+	}
+
+	cur, err := app.LoadCurrent(cfg.CurrentStatePath)
+	if err != nil {
+		return "", err
+	}
+	if cur != nil && strings.TrimSpace(cur.ID) != "" {
+		ref := app.BuildShortRefs([]string{cur.ID}, 2)[cur.ID]
+		if cur.ID == token || ref == token {
+			return cur.ID, nil
+		}
+	}
+
+	tracked, err := app.LoadTracked(cfg.TrackedBastionsPath)
+	if err != nil {
+		return "", err
+	}
+	if len(tracked) > 0 {
+		ids := make([]string, 0, len(tracked))
+		for _, b := range tracked {
+			ids = append(ids, b.ID)
+		}
+		refs := app.BuildShortRefs(ids, 2)
+		for _, b := range tracked {
+			if b.ID == token || refs[b.ID] == token {
+				return b.ID, nil
+			}
+		}
+	}
+
+	if cfg.ContextScopeEnabled {
+		scoped, err := app.ListScopedBastions(*cfg)
+		if err == nil && len(scoped) > 0 {
+			ids := make([]string, 0, len(scoped))
+			for _, b := range scoped {
+				ids = append(ids, b.ID)
+			}
+			refs := app.BuildShortRefs(ids, 2)
+			for _, b := range scoped {
+				if b.ID == token || refs[b.ID] == token {
+					return b.ID, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("bastion %q not found in current/tracked%s", token, func() string {
+		if cfg.ContextScopeEnabled {
+			return "/scoped"
+		}
+		return ""
+	}())
+}

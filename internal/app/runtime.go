@@ -230,18 +230,23 @@ func UpdateSSHFragment(cfg Config, sessionID string) error {
 	return os.Rename(tmp, cfg.SSHIncludePath)
 }
 
-func WaitForActive(client OCIClient, sessionID string, timeout time.Duration, poll time.Duration) (BastionSession, error) {
+func WaitForActive(client OCIClient, sessionID string, timeout time.Duration, poll time.Duration, onPoll func(BastionSession)) (BastionSession, error) {
 	deadline := time.Now().Add(timeout)
+	lastState := ""
 	for {
 		s, err := client.GetSession(sessionID)
 		if err != nil {
 			return BastionSession{}, err
 		}
+		lastState = s.LifecycleState
+		if onPoll != nil {
+			onPoll(s)
+		}
 		if strings.EqualFold(s.LifecycleState, "ACTIVE") {
 			return s, nil
 		}
 		if time.Now().After(deadline) {
-			return BastionSession{}, fmt.Errorf("session %s did not reach ACTIVE state (last state: %s)", sessionID, s.LifecycleState)
+			return BastionSession{}, fmt.Errorf("session %s did not reach ACTIVE state within %s (last state: %s)", sessionID, timeout.String(), lastState)
 		}
 		time.Sleep(poll)
 	}

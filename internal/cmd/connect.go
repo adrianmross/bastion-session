@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/adrianmross/bastion-session/internal/app"
 	"github.com/spf13/cobra"
@@ -14,18 +15,35 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 	var instanceID string
 	var privateIP string
 	var keyOverride string
+	var verbose bool
 	cmd := &cobra.Command{
-		Use:   "connect",
+		Use:   "connect [bastion-ref-or-ocid]",
 		Short: "Connect using existing session or by creating a new one",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if keyOverride != "" {
 				opts.cfg.SSHPublicKey = keyOverride
+			}
+			if len(args) == 1 {
+				if strings.TrimSpace(sessionToken) != "" {
+					return fmt.Errorf("positional bastion token cannot be used with --session")
+				}
+				if strings.TrimSpace(bastionID) != "" {
+					return fmt.Errorf("positional bastion token cannot be used with --bastion-id")
+				}
+				resolved, err := resolveBastionIDToken(&opts.cfg, args[0])
+				if err != nil {
+					return err
+				}
+				bastionID = resolved
 			}
 			cur, err := loadCurrentSelection(&opts.cfg)
 			if err != nil {
 				return err
 			}
 			var session app.BastionSession
+			lastPrintedState := ""
+			lastPrintedAt := time.Time{}
 			if strings.TrimSpace(sessionToken) != "" {
 				bid, err := requireBastionID(cur, bastionID)
 				if err != nil {
@@ -50,6 +68,9 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 						}
 					}
 				}
+				if verbose {
+					fmt.Fprintf(cmd.OutOrStdout(), "Fetching existing session %s for bastion %s\n", sessionID, bid)
+				}
 				session, err = client.GetSession(sessionID)
 				if err != nil {
 					return err
@@ -63,6 +84,28 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 					BastionID:  bid,
 					InstanceID: instanceID,
 					PrivateIP:  privateIP,
+					OnCreated: func(s app.BastionSession) {
+						if verbose {
+							fmt.Fprintf(cmd.OutOrStdout(), "Created session %s; waiting for ACTIVE...\n", s.ID)
+						}
+					},
+					OnPoll: func(s app.BastionSession) {
+						if !verbose {
+							return
+						}
+						now := time.Now().UTC()
+						if strings.EqualFold(s.LifecycleState, lastPrintedState) && now.Sub(lastPrintedAt) < 20*time.Second {
+							return
+						}
+						lastPrintedState = s.LifecycleState
+						lastPrintedAt = now
+						expires := "-"
+						if !s.TimeExpires.IsZero() {
+							expires = s.TimeExpires.Format(time.RFC3339)
+						}
+						fmt.Fprintf(cmd.OutOrStdout(), "[%s] session=%s lifecycle=%s expires=%s\n",
+							now.Format(time.RFC3339), s.ID, emptyDash(s.LifecycleState), expires)
+					},
 				})
 				if err != nil {
 					return err
@@ -88,5 +131,6 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&instanceID, "instance-id", "", "Target instance OCID override (otherwise Terraform outputs)")
 	cmd.Flags().StringVar(&privateIP, "private-ip", "", "Target private IP override (otherwise Terraform outputs)")
 	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override when creating a new session")
+	cmd.Flags().BoolVar(&verbose, "verbose", false, "Show session creation and lifecycle polling details")
 	return cmd
 }

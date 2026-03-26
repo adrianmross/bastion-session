@@ -16,6 +16,7 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 	var privateIP string
 	var keyOverride string
 	var verbose bool
+	var waitTimeout time.Duration
 	cmd := &cobra.Command{
 		Use:   "connect [bastion-ref-or-ocid]",
 		Short: "Connect using existing session or by creating a new one",
@@ -81,9 +82,10 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 					return err
 				}
 				session, err = app.RefreshSessionWithTarget(opts.cfg, app.RefreshOptions{
-					BastionID:  bid,
-					InstanceID: instanceID,
-					PrivateIP:  privateIP,
+					BastionID:   bid,
+					InstanceID:  instanceID,
+					PrivateIP:   privateIP,
+					WaitTimeout: waitTimeout,
 					OnCreated: func(s app.BastionSession) {
 						if verbose {
 							fmt.Fprintf(cmd.OutOrStdout(), "Created session %s; waiting for ACTIVE...\n", s.ID)
@@ -132,5 +134,6 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&privateIP, "private-ip", "", "Target private IP override (otherwise Terraform outputs)")
 	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override when creating a new session")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Show session creation and lifecycle polling details")
+	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", app.ActiveWaitTimeout, "How long to wait for a newly created session to reach ACTIVE (e.g. 2m, 10m)")
 	return cmd
 }

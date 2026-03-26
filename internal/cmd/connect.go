@@ -42,6 +42,8 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// `use` selection is authoritative for identity settings in connect flows.
+			applyCurrentSelectionIdentity(&opts.cfg, cur)
 			var session app.BastionSession
 			lastPrintedState := ""
 			lastPrintedAt := time.Time{}
@@ -89,6 +91,15 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 					OnCreated: func(s app.BastionSession) {
 						if verbose {
 							fmt.Fprintf(cmd.OutOrStdout(), "Created session %s; waiting for ACTIVE...\n", s.ID)
+						}
+					},
+					OnReused: func(s app.BastionSession) {
+						if verbose {
+							expires := "-"
+							if !s.TimeExpires.IsZero() {
+								expires = s.TimeExpires.Format(time.RFC3339)
+							}
+							fmt.Fprintf(cmd.OutOrStdout(), "Reusing ACTIVE session %s (expires=%s)\n", s.ID, expires)
 						}
 					},
 					OnPoll: func(s app.BastionSession) {

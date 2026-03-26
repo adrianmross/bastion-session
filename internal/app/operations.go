@@ -23,8 +23,11 @@ type RefreshOptions struct {
 	PrivateIP   string
 	WaitTimeout time.Duration
 	OnCreated   func(BastionSession)
+	OnReused    func(BastionSession)
 	OnPoll      func(BastionSession)
 }
+
+const MinReusableSessionTTL = 2 * time.Minute
 
 func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, error) {
 	client := OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
@@ -40,6 +43,49 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		return BastionSession{}, fmt.Errorf("SSH_PUBLIC_KEY environment variable or config required")
 	}
 	cfg.SSHPublicKey = pub
+
+	now := time.Now().UTC()
+	if reusableID, ok := selectReusableSession(metadata, listActiveSessions(client, metadata.BastionID), now, MinReusableSessionTTL); ok {
+		if reused, err := client.GetSession(reusableID); err == nil {
+			if sessionIsReusable(metadata, reused, now, MinReusableSessionTTL) {
+				if opts.OnReused != nil {
+					opts.OnReused(reused)
+				}
+				if err := SaveSession(cfg.SessionStatePath, reused); err != nil {
+					return BastionSession{}, err
+				}
+				if err := EnsureSSHInclude(cfg.SSHIncludePath); err != nil {
+					return BastionSession{}, err
+				}
+				if err := UpdateSSHFragment(cfg, reused.ID); err != nil {
+					return BastionSession{}, err
+				}
+				_ = UpsertTracked(cfg.TrackedBastionsPath, TrackedBastion{
+					ID:         metadata.BastionID,
+					Region:     cfg.Region,
+					Profile:    cfg.Profile,
+					AuthMethod: cfg.AuthMethod,
+					SSHPublicKey: func() string {
+						return cfg.SSHPublicKey
+					}(),
+					CompartmentID: func() string {
+						if cfg.ScopedContext != nil {
+							return cfg.ScopedContext.CompartmentOCID
+						}
+						return ""
+					}(),
+					ContextName: func() string {
+						if cfg.ScopedContext != nil {
+							return cfg.ScopedContext.Name
+						}
+						return ""
+					}(),
+					LastSeenAt: time.Now().UTC(),
+				})
+				return reused, nil
+			}
+		}
+	}
 
 	created, err := client.CreateSession(TargetDetails{
 		BastionID:     metadata.BastionID,
@@ -94,6 +140,81 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		LastSeenAt: time.Now().UTC(),
 	})
 	return active, nil
+}
+
+func listActiveSessions(client OCIClient, bastionID string) []SessionInfo {
+	sessions, err := client.ListSessions(strings.TrimSpace(bastionID))
+	if err != nil {
+		return nil
+	}
+	return sessions
+}
+
+func selectReusableSession(metadata SessionMetadata, sessions []SessionInfo, now time.Time, minTTL time.Duration) (string, bool) {
+	candidates := make([]SessionInfo, 0, len(sessions))
+	for _, s := range sessions {
+		if !sessionInfoIsReusable(metadata, s, now, minTTL) {
+			continue
+		}
+		candidates = append(candidates, s)
+	}
+	if len(candidates) == 0 {
+		return "", false
+	}
+	slices.SortFunc(candidates, func(a, b SessionInfo) int {
+		if !a.TimeExpires.Equal(b.TimeExpires) {
+			if a.TimeExpires.After(b.TimeExpires) {
+				return -1
+			}
+			return 1
+		}
+		if a.TimeCreated.Equal(b.TimeCreated) {
+			return strings.Compare(a.ID, b.ID)
+		}
+		if a.TimeCreated.After(b.TimeCreated) {
+			return -1
+		}
+		return 1
+	})
+	return candidates[0].ID, true
+}
+
+func sessionInfoIsReusable(metadata SessionMetadata, s SessionInfo, now time.Time, minTTL time.Duration) bool {
+	if !strings.EqualFold(strings.TrimSpace(s.LifecycleState), "ACTIVE") {
+		return false
+	}
+	if metadata.BastionID != "" && strings.TrimSpace(s.BastionID) != "" && strings.TrimSpace(s.BastionID) != strings.TrimSpace(metadata.BastionID) {
+		return false
+	}
+	if metadata.InstanceID != "" && strings.TrimSpace(s.TargetResource) != "" && strings.TrimSpace(s.TargetResource) != strings.TrimSpace(metadata.InstanceID) {
+		return false
+	}
+	if metadata.PrivateIP != "" && strings.TrimSpace(s.TargetPrivate) != "" && strings.TrimSpace(s.TargetPrivate) != strings.TrimSpace(metadata.PrivateIP) {
+		return false
+	}
+	if !s.TimeExpires.IsZero() && !s.TimeExpires.After(now.Add(minTTL)) {
+		return false
+	}
+	return true
+}
+
+func sessionIsReusable(metadata SessionMetadata, s BastionSession, now time.Time, minTTL time.Duration) bool {
+	if !strings.EqualFold(strings.TrimSpace(s.LifecycleState), "ACTIVE") {
+		return false
+	}
+	if metadata.BastionID != "" && strings.TrimSpace(s.BastionID) != "" && strings.TrimSpace(s.BastionID) != strings.TrimSpace(metadata.BastionID) {
+		return false
+	}
+	if metadata.InstanceID != "" && strings.TrimSpace(s.TargetResourceID) != "" && strings.TrimSpace(s.TargetResourceID) != strings.TrimSpace(metadata.InstanceID) {
+		return false
+	}
+	if metadata.PrivateIP != "" && strings.TrimSpace(s.TargetPrivateIP) != "" && strings.TrimSpace(s.TargetPrivateIP) != strings.TrimSpace(metadata.PrivateIP) {
+		return false
+	}
+	if !s.TimeExpires.IsZero() && !s.TimeExpires.After(now.Add(minTTL)) {
+		return false
+	}
+	return true
 }
 
 func resolveTargetMetadata(cfg Config, client OCIClient, opts RefreshOptions) (SessionMetadata, error) {

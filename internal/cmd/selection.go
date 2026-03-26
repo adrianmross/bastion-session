@@ -33,6 +33,24 @@ func loadCurrentSelection(cfg *app.Config) (*app.CurrentBastion, error) {
 	return cur, nil
 }
 
+func applyCurrentSelectionIdentity(cfg *app.Config, cur *app.CurrentBastion) {
+	if cfg == nil || cur == nil {
+		return
+	}
+	if v := strings.TrimSpace(cur.Profile); v != "" {
+		cfg.Profile = v
+	}
+	if v := strings.TrimSpace(cur.Region); v != "" {
+		cfg.Region = v
+	}
+	if v := strings.TrimSpace(cur.AuthMethod); v != "" {
+		cfg.AuthMethod = v
+	}
+	if v := strings.TrimSpace(cur.SSHPublicKey); v != "" {
+		cfg.SSHPublicKey = v
+	}
+}
+
 func requireBastionID(current *app.CurrentBastion, explicit string) (string, error) {
 	if token := strings.TrimSpace(explicit); token != "" {
 		if strings.HasPrefix(token, "ocid1.") {

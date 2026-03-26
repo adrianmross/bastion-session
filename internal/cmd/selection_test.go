@@ -105,3 +105,30 @@ func TestResolveBastionIDTokenFromCurrentRef(t *testing.T) {
 		t.Fatalf("expected current id, got %s", got)
 	}
 }
+
+func TestApplyCurrentSelectionIdentityOverridesScopedIdentity(t *testing.T) {
+	cfg := app.Config{
+		Profile:    "oabcs1-terraform",
+		Region:     "us-chicago-1",
+		AuthMethod: "security_token",
+	}
+	cur := &app.CurrentBastion{
+		Profile:      "DEFAULT",
+		Region:       "us-sanjose-1",
+		AuthMethod:   "api_key",
+		SSHPublicKey: "/tmp/id.pub",
+	}
+	applyCurrentSelectionIdentity(&cfg, cur)
+	if cfg.Profile != "DEFAULT" {
+		t.Fatalf("expected profile override from current, got %q", cfg.Profile)
+	}
+	if cfg.Region != "us-sanjose-1" {
+		t.Fatalf("expected region override from current, got %q", cfg.Region)
+	}
+	if cfg.AuthMethod != "api_key" {
+		t.Fatalf("expected auth override from current, got %q", cfg.AuthMethod)
+	}
+	if cfg.SSHPublicKey != "/tmp/id.pub" {
+		t.Fatalf("expected ssh key override from current, got %q", cfg.SSHPublicKey)
+	}
+}

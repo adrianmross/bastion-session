@@ -24,7 +24,18 @@ func newWatchCmd(opts *rootOptions) *cobra.Command {
 				sleepFor = explicit
 			}
 			for {
-				s, err := app.RefreshSession(opts.cfg)
+				cur, err := loadCurrentSelection(&opts.cfg)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to load current selection: %v\n", err)
+				}
+				// `use` selection is authoritative for watch flows, even when oci-context changes.
+				applyCurrentSelectionIdentity(&opts.cfg, cur)
+				refreshOpts := app.RefreshOptions{}
+				if cur != nil && cur.ID != "" {
+					refreshOpts.BastionID = cur.ID
+				}
+
+				s, err := app.RefreshSessionWithTarget(opts.cfg, refreshOpts)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to refresh session: %v\n", err)
 					sleepFor = app.DefaultWatchInterval

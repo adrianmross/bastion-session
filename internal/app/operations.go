@@ -18,12 +18,12 @@ type Status struct {
 }
 
 type RefreshOptions struct {
-	BastionID  string
-	InstanceID string
-	PrivateIP  string
+	BastionID   string
+	InstanceID  string
+	PrivateIP   string
 	WaitTimeout time.Duration
-	OnCreated  func(BastionSession)
-	OnPoll     func(BastionSession)
+	OnCreated   func(BastionSession)
+	OnPoll      func(BastionSession)
 }
 
 func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, error) {

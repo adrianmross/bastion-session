@@ -21,6 +21,7 @@ type RefreshOptions struct {
 	BastionID  string
 	InstanceID string
 	PrivateIP  string
+	WaitTimeout time.Duration
 	OnCreated  func(BastionSession)
 	OnPoll     func(BastionSession)
 }
@@ -53,7 +54,11 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 	if opts.OnCreated != nil {
 		opts.OnCreated(created)
 	}
-	active, err := WaitForActive(client, created.ID, ActiveWaitTimeout, ActivePollIntervalSeconds, opts.OnPoll)
+	waitTimeout := ActiveWaitTimeout
+	if opts.WaitTimeout > 0 {
+		waitTimeout = opts.WaitTimeout
+	}
+	active, err := WaitForActive(client, created.ID, waitTimeout, ActivePollIntervalSeconds, opts.OnPoll)
 	if err != nil {
 		return BastionSession{}, err
 	}

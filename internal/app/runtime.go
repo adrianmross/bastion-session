@@ -26,6 +26,14 @@ type SessionMetadata struct {
 	BastionHost string
 }
 
+type TargetSSHHost struct {
+	Alias        string
+	HostName     string
+	User         string
+	IdentityFile string
+	ProxyJump    string
+}
+
 var publicKeyEnvVars = []string{
 	"SSH_PUBLIC_KEY",
 	"TF_VAR_bastion_ssh_public_key_path",
@@ -198,6 +206,11 @@ func EnsureSSHInclude(includePath string) error {
 }
 
 func UpdateSSHFragment(cfg Config, sessionID string) error {
+	return UpdateSSHFragmentWithTarget(cfg, sessionID, TargetSSHHost{})
+}
+
+func UpdateSSHFragmentWithTarget(cfg Config, sessionID string, target TargetSSHHost) error {
+	bastionAlias := cfg.Profile + "-bastion"
 	privateKey := cfg.SSHPrivateKey
 	if privateKey == "" && strings.HasSuffix(cfg.SSHPublicKey, ".pub") {
 		candidate := strings.TrimSuffix(cfg.SSHPublicKey, ".pub")
@@ -207,7 +220,7 @@ func UpdateSSHFragment(cfg Config, sessionID string) error {
 	}
 	lines := []string{
 		"# Managed by bastion-session CLI",
-		fmt.Sprintf("Host %s-bastion", cfg.Profile),
+		fmt.Sprintf("Host %s", bastionAlias),
 		fmt.Sprintf("  HostName host.bastion.%s.oci.oraclecloud.com", cfg.Region),
 		"  Port 22",
 		fmt.Sprintf("  User %s", sessionID),
@@ -219,6 +232,38 @@ func UpdateSSHFragment(cfg Config, sessionID string) error {
 		"  IdentitiesOnly yes",
 		"  IdentityAgent none",
 	)
+	if strings.TrimSpace(target.Alias) != "" {
+		proxyJump := strings.TrimSpace(target.ProxyJump)
+		if proxyJump == "" {
+			proxyJump = bastionAlias
+		}
+		hostName := strings.TrimSpace(target.HostName)
+		if hostName == "" {
+			hostName = strings.TrimSpace(target.Alias)
+		}
+		user := strings.TrimSpace(target.User)
+		if user == "" {
+			user = cfg.TargetUser
+		}
+		lines = append(lines,
+			"",
+			fmt.Sprintf("Host %s", strings.TrimSpace(target.Alias)),
+			fmt.Sprintf("  HostName %s", hostName),
+			"  Port 22",
+			fmt.Sprintf("  User %s", user),
+		)
+		if strings.TrimSpace(target.IdentityFile) != "" {
+			lines = append(lines, fmt.Sprintf("  IdentityFile %s", strings.TrimSpace(target.IdentityFile)))
+		}
+		lines = append(lines,
+			"  IdentitiesOnly yes",
+			fmt.Sprintf("  ProxyJump %s", proxyJump),
+		)
+	}
+	for _, block := range preservedTargetSSHBlocks(cfg.SSHIncludePath, bastionAlias, strings.TrimSpace(target.Alias)) {
+		lines = append(lines, "")
+		lines = append(lines, block...)
+	}
 	content := strings.Join(lines, "\n") + "\n"
 	if err := os.MkdirAll(filepath.Dir(cfg.SSHIncludePath), 0o755); err != nil {
 		return err
@@ -228,6 +273,52 @@ func UpdateSSHFragment(cfg Config, sessionID string) error {
 		return err
 	}
 	return os.Rename(tmp, cfg.SSHIncludePath)
+}
+
+func preservedTargetSSHBlocks(includePath, bastionAlias, replacedAlias string) [][]string {
+	data, err := os.ReadFile(includePath)
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	var blocks [][]string
+	var current []string
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		hostLine := strings.TrimSpace(current[0])
+		fields := strings.Fields(hostLine)
+		if len(fields) >= 2 && strings.EqualFold(fields[0], "Host") {
+			aliases := fields[1:]
+			isBastion := false
+			isReplaced := false
+			for _, alias := range aliases {
+				if alias == bastionAlias {
+					isBastion = true
+				}
+				if replacedAlias != "" && alias == replacedAlias {
+					isReplaced = true
+				}
+			}
+			if !isBastion && !isReplaced {
+				blocks = append(blocks, current)
+			}
+		}
+		current = nil
+	}
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "Host ") {
+			flush()
+			current = []string{line}
+			continue
+		}
+		if current != nil && strings.TrimSpace(line) != "" {
+			current = append(current, line)
+		}
+	}
+	flush()
+	return blocks
 }
 
 func WaitForActive(client OCIClient, sessionID string, timeout time.Duration, poll time.Duration, onPoll func(BastionSession)) (BastionSession, error) {

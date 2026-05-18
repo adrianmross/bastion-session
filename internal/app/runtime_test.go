@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -72,5 +73,88 @@ func TestResolvePublicKeyFallsBackToDefaultSSHKey(t *testing.T) {
 
 	if got := ResolvePublicKey(Config{}); got != pub {
 		t.Fatalf("expected %s, got %s", pub, got)
+	}
+}
+
+func TestUpdateSSHFragmentWithTargetWritesVMHostAlias(t *testing.T) {
+	dir := t.TempDir()
+	include := filepath.Join(dir, "config.d", "bastion-session")
+	cfg := Config{
+		Profile:        "dev",
+		Region:         "us-chicago-1",
+		TargetUser:     "opc",
+		SSHPublicKey:   filepath.Join(dir, "bastion.key.pub"),
+		SSHIncludePath: include,
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bastion.key"), []byte("PRIVATE"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.SSHPublicKey, []byte("PUBLIC"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := UpdateSSHFragmentWithTarget(cfg, "ocid1.bastionsession.oc1..abc", TargetSSHHost{
+		Alias:        "vmordws02",
+		HostName:     "10.42.1.217",
+		IdentityFile: "~/.ssh/vm.key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(include)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"Host dev-bastion",
+		"  User ocid1.bastionsession.oc1..abc",
+		"  IdentityFile " + filepath.Join(dir, "bastion.key"),
+		"Host vmordws02",
+		"  HostName 10.42.1.217",
+		"  User opc",
+		"  IdentityFile ~/.ssh/vm.key",
+		"  ProxyJump dev-bastion",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected fragment to contain %q, got:\n%s", want, got)
+		}
+	}
+}
+
+func TestUpdateSSHFragmentPreservesTargetAliasesAcrossSessionRefresh(t *testing.T) {
+	dir := t.TempDir()
+	include := filepath.Join(dir, "config.d", "bastion-session")
+	cfg := Config{
+		Profile:        "dev",
+		Region:         "us-chicago-1",
+		TargetUser:     "opc",
+		SSHIncludePath: include,
+	}
+	if err := UpdateSSHFragmentWithTarget(cfg, "ocid1.session.old", TargetSSHHost{
+		Alias:    "vmordws02",
+		HostName: "10.42.1.217",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateSSHFragment(cfg, "ocid1.session.new"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(include)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"  User ocid1.session.new",
+		"Host vmordws02",
+		"  HostName 10.42.1.217",
+		"  ProxyJump dev-bastion",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected refreshed fragment to contain %q, got:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "ocid1.session.old") {
+		t.Fatalf("old session ID should not remain in bastion block:\n%s", got)
 	}
 }

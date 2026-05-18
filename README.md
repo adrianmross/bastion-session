@@ -48,8 +48,12 @@ VERSION=v0.1.0 curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-s
 ./bastion-session connect                       # create/refresh and connect
 ./bastion-session connect --key ~/.ssh/id_ed25519.pub
 ./bastion-session connect --session <sess-ref>  # reuse existing session
+./bastion-session connect -o json
+./bastion-session ensure vmordws02              # create/refresh and write VM-facing SSH host
+./bastion-session ensure vmordws02 -o json
 ./bastion-session session list
 ./bastion-session session new <bastion-ref>
+./bastion-session session new <bastion-ref> -o json
 ./bastion-session session new <bastion-ref> --key ~/.ssh/id_ed25519.pub
 ./bastion-session session use <session-id-or-ref>
 ./bastion-session track rm <ref-or-ocid>
@@ -69,6 +73,26 @@ Ensure your `~/.ssh/config` includes:
 ```
 Include ~/.ssh/config.d/bastion-session
 ```
+
+### VM-facing SSH aliases
+
+`ensure` creates or reuses a managed SSH session, updates the internal OCI
+bastion host alias, and writes a target VM alias that connects through it:
+
+```bash
+bastion-session ensure vmordws02 \
+  --target-identity-file ~/.ssh/oci/example-vm.key
+ssh vmordws02
+```
+
+Structured output is available for scripts and agents:
+
+```bash
+bastion-session ensure vmordws02 -o json
+```
+
+The generated SSH fragment keeps the internal `PROFILE-bastion` alias current
+when sessions rotate, while preserving VM-facing aliases such as `vmordws02`.
 
 ## Context Scoping
 

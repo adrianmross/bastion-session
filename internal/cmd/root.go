@@ -128,6 +128,7 @@ func newRootCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		newRefreshCmd(opts),
+		newEnsureCmd(opts),
 		newConnectCmd(opts),
 		newStatusCmd(opts),
 		newWatchCmd(opts),

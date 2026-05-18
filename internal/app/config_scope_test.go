@@ -17,3 +17,11 @@ func TestApplyContextScopeDoesNotOverrideExplicitAuthMethod(t *testing.T) {
 		t.Fatalf("expected explicit auth method to be preserved, got %q", cfg.AuthMethod)
 	}
 }
+
+func TestConfigFromEnvTrackedTargetsPath(t *testing.T) {
+	t.Setenv("BASTION_TRACKED_TARGETS_PATH", "/tmp/tracked-targets.json")
+	cfg := ConfigFromEnv()
+	if cfg.TrackedTargetsPath != "/tmp/tracked-targets.json" {
+		t.Fatalf("expected tracked targets path from env, got %q", cfg.TrackedTargetsPath)
+	}
+}

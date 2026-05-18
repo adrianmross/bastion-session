@@ -26,6 +26,7 @@ type rootOptions struct {
 	currentPath      string
 	terraformOutputs string
 	trackedPath      string
+	trackedTargets   string
 
 	ociContextConfig string
 	globalOCIContext bool
@@ -78,6 +79,9 @@ func newRootCmd() *cobra.Command {
 			if opts.trackedPath != "" {
 				cfg.TrackedBastionsPath = opts.trackedPath
 			}
+			if opts.trackedTargets != "" {
+				cfg.TrackedTargetsPath = opts.trackedTargets
+			}
 			cfg.OCIContextConfigPath = opts.ociContextConfig
 			cfg.UseGlobalOCIContext = opts.globalOCIContext
 			cfg.ContextScopeEnabled = !opts.noContextScope
@@ -121,6 +125,7 @@ func newRootCmd() *cobra.Command {
 	pf.StringVar(&opts.statePath, "state-path", "", "Path to state cache file")
 	pf.StringVar(&opts.currentPath, "current-path", "", "Path to current selected bastion state file")
 	pf.StringVar(&opts.trackedPath, "tracked-path", "", "Path to tracked bastions file")
+	pf.StringVar(&opts.trackedTargets, "tracked-targets-path", "", "Path to tracked VM targets file")
 	pf.StringVar(&opts.terraformOutputs, "terraform-outputs", "", "Path to Terraform state/outputs file")
 	pf.StringVar(&opts.ociContextConfig, "oci-context-config", "", "Path to oci-context config file")
 	pf.BoolVarP(&opts.globalOCIContext, "global", "g", false, "Use global oci-context config (~/.oci-context/config.yml)")
@@ -136,6 +141,7 @@ func newRootCmd() *cobra.Command {
 		newUseCmd(opts),
 		newCurrentCmd(opts),
 		newTrackCmd(opts),
+		newTargetCmd(opts),
 		newSessionCmd(opts),
 		newServiceCmd(opts),
 		newTUICmd(opts),

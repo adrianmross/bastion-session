@@ -10,6 +10,7 @@ and keep sessions refreshed for remote workstation access.
 - Watch mode with auto-refresh based on TTL.
 - OCI-context-aware scoping (profile/region/compartment from current `oci-context`).
 - List bastions in current scoped context, plus tracked bastions history.
+- Track VM targets by SSH alias for repeatable `ensure <host>` runs.
 - Interactive TUI (based on `oci-context` patterns) with scope banner and escape-to-tracked mode.
 
 ## Build
@@ -51,6 +52,10 @@ VERSION=v0.1.0 curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-s
 ./bastion-session connect -o json
 ./bastion-session ensure vmordws02              # create/refresh and write VM-facing SSH host
 ./bastion-session ensure vmordws02 -o json
+./bastion-session target track vmordws02 --instance-id ocid1.instance... --private-ip 10.42.1.217 --bastion-id ocid1.bastion...
+./bastion-session target list -o table
+./bastion-session target show vmordws02 -o json
+./bastion-session target rm vmordws02
 ./bastion-session session list
 ./bastion-session session new <bastion-ref>
 ./bastion-session session new <bastion-ref> -o json
@@ -93,6 +98,32 @@ bastion-session ensure vmordws02 -o json
 
 The generated SSH fragment keeps the internal `PROFILE-bastion` alias current
 when sessions rotate, while preserving VM-facing aliases such as `vmordws02`.
+
+### Tracked VM targets
+
+Tracked targets persist under `~/.cache/bastion-session/tracked-targets.json`
+by default. Override with `BASTION_TRACKED_TARGETS_PATH` or
+`--tracked-targets-path`.
+
+```bash
+bastion-session target track vmordws02 \
+  --instance-id ocid1.instance.oc1..example \
+  --private-ip 10.42.1.217 \
+  --user opc \
+  --identity-file ~/.ssh/oci/example-vm.key \
+  --bastion-id ocid1.bastion.oc1..example
+```
+
+Targets can also be populated from Terraform outputs containing `bastion_id`,
+`instance_id`, and `private_ip`:
+
+```bash
+bastion-session target track vmordws02 --terraform-outputs ./outputs.json
+```
+
+After tracking, `bastion-session ensure vmordws02` fills the target instance,
+private IP, target user, target identity file, and bastion ID from the registry
+unless those values are supplied explicitly on the command line.
 
 ## Context Scoping
 

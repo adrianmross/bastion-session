@@ -370,6 +370,10 @@ func SessionStatus(cfg Config) (Status, error) {
 	if cfg.ScopedContext != nil {
 		st.Context = cfg.ScopedContext.Name
 	}
+	if !s.TimeExpires.IsZero() && !s.TimeExpires.After(time.Now()) {
+		st.Lifecycle = "EXPIRED"
+		st.ExpiresIn = "expired " + time.Since(s.TimeExpires).Round(time.Second).String() + " ago"
+	}
 	return st, nil
 }
 

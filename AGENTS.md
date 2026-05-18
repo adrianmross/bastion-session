@@ -25,6 +25,18 @@
 - Use `t.TempDir()` for filesystem state and keep tests deterministic.
 - Run `go test ./...` before opening PRs.
 
+## Agent Contract
+- Use JSON output for automation wherever the CLI supports it, including
+  `bastion-session connect -o json`, `bastion-session ensure <host> -o json`,
+  and `bastion-session session new <bastion-ref> -o json`.
+- Treat JSON field names as stable contract. Prefer additive fields and document
+  any breaking output change before relying on it in workflows or scripts.
+- Preferred validation commands are `make fmt`, `make vet`, `make test`,
+  `make lint-workflows`, and `make validate-workflows`.
+- Release behavior is tag-driven: `v*` tags publish through GoReleaser, and the
+  `auto-release` workflow can create semantic tags from Conventional Commit
+  subjects on `main` while skipping commits that modify workflows.
+
 ## Commit & Pull Request Guidelines
 - Follow Conventional Commits (`feat`, `fix`, `chore`, `refactor`).
 - Keep commits atomic with imperative summaries.

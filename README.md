@@ -125,6 +125,19 @@ After tracking, `bastion-session ensure vmordws02` fills the target instance,
 private IP, target user, target identity file, and bastion ID from the registry
 unless those values are supplied explicitly on the command line.
 
+## Agent Contract
+
+- Stable automation output is JSON. Agents should prefer `-o json` for supported
+  commands such as `connect`, `ensure`, and `session new`, and should not parse
+  human-readable output when JSON is available.
+- JSON keys are compatibility surface. Add fields when needed, but avoid
+  renaming or removing existing fields without a documented migration path.
+- Preferred local checks are `make fmt`, `make vet`, `make test`,
+  `make lint-workflows`, and `make validate-workflows`.
+- Releases are produced from semantic `v*` tags through GoReleaser. The
+  `auto-release` workflow may create the next tag from Conventional Commit
+  subjects on `main`, but it skips commits that modify workflow files.
+
 ## Context Scoping
 
 By default, bastion-session loads your current `oci-context` and scopes operations by it

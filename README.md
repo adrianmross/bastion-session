@@ -48,10 +48,12 @@ VERSION=v0.1.0 curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-s
 ./bastion-session connect                       # create/refresh and connect
 ./bastion-session connect --key ~/.ssh/id_ed25519.pub
 ./bastion-session connect --session <sess-ref>  # reuse existing session
+./bastion-session connect -o json
 ./bastion-session ensure vmordws02              # create/refresh and write VM-facing SSH host
 ./bastion-session ensure vmordws02 -o json
 ./bastion-session session list
 ./bastion-session session new <bastion-ref>
+./bastion-session session new <bastion-ref> -o json
 ./bastion-session session new <bastion-ref> --key ~/.ssh/id_ed25519.pub
 ./bastion-session session use <session-id-or-ref>
 ./bastion-session track rm <ref-or-ocid>

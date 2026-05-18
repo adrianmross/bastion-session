@@ -17,6 +17,17 @@ type sessionRow struct {
 	Expires   string `json:"expires" yaml:"expires"`
 }
 
+type sessionNewResult struct {
+	SessionID        string `json:"session_id" yaml:"session_id"`
+	SessionLifecycle string `json:"session_lifecycle" yaml:"session_lifecycle"`
+	ExpiresAt        string `json:"expires_at" yaml:"expires_at"`
+	TargetPrivateIP  string `json:"target_private_ip,omitempty" yaml:"target_private_ip,omitempty"`
+	TargetInstanceID string `json:"target_instance_id,omitempty" yaml:"target_instance_id,omitempty"`
+	Profile          string `json:"profile" yaml:"profile"`
+	Region           string `json:"region" yaml:"region"`
+	Context          string `json:"context,omitempty" yaml:"context,omitempty"`
+}
+
 func newSessionCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{Use: "session", Short: "Manage bastion sessions"}
 	cmd.AddCommand(newSessionListCmd(opts), newSessionUseCmd(opts), newSessionNewCmd(opts), newSessionWaitCmd(opts))
@@ -55,6 +66,7 @@ func newSessionNewCmd(opts *rootOptions) *cobra.Command {
 	var instanceID string
 	var privateIP string
 	var keyOverride string
+	var output string
 	cmd := &cobra.Command{
 		Use:   "new [bastion-id-or-ref]",
 		Short: "Create a new bastion session (explicit create/renew path)",
@@ -82,14 +94,36 @@ func newSessionNewCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Created session %s\n", s.ID)
-			return nil
+			result := sessionNewResult{
+				SessionID:        s.ID,
+				SessionLifecycle: s.LifecycleState,
+				ExpiresAt:        s.TimeExpires.Format(time.RFC3339),
+				TargetPrivateIP:  s.TargetPrivateIP,
+				TargetInstanceID: s.TargetResourceID,
+				Profile:          opts.cfg.Profile,
+				Region:           opts.cfg.Region,
+			}
+			if opts.cfg.ScopedContext != nil {
+				result.Context = opts.cfg.ScopedContext.Name
+			}
+			switch strings.ToLower(output) {
+			case "", "text", "table":
+				fmt.Fprintf(cmd.OutOrStdout(), "Created session %s\n", s.ID)
+				return nil
+			case "json":
+				return printJSON(result)
+			case "yaml", "yml":
+				return printYAML(result)
+			default:
+				return fmt.Errorf("unsupported output format: %s", output)
+			}
 		},
 	}
 	cmd.Flags().StringVar(&bastionID, "bastion-id", "", "Bastion OCID (defaults to current selected bastion)")
 	cmd.Flags().StringVar(&instanceID, "instance-id", "", "Target instance OCID override (otherwise Terraform outputs)")
 	cmd.Flags().StringVar(&privateIP, "private-ip", "", "Target private IP override (otherwise Terraform outputs)")
 	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override for this session creation")
+	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
 	return cmd
 }
 

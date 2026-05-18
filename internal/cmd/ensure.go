@@ -44,6 +44,11 @@ func newEnsureCmd(opts *rootOptions) *cobra.Command {
 			if keyOverride != "" {
 				opts.cfg.SSHPublicKey = keyOverride
 			}
+			trackedTarget, err := app.FindTrackedTarget(opts.cfg.TrackedTargetsPath, sshHost)
+			if err != nil {
+				return err
+			}
+			applyTrackedTargetForEnsure(&opts.cfg, trackedTarget, &bastionID, &instanceID, &privateIP, &targetIdentityFile, opts.targetUser != "")
 			cur, err := loadCurrentSelection(&opts.cfg)
 			if err != nil {
 				return err
@@ -124,7 +129,32 @@ func newEnsureCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&privateIP, "private-ip", "", "Target private IP override (otherwise Terraform outputs)")
 	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override when creating a new session")
 	cmd.Flags().StringVar(&targetIdentityFile, "target-identity-file", "", "SSH private key for the target VM host alias")
+	cmd.Flags().StringVar(&targetIdentityFile, "identity-file", "", "SSH private key for the target VM host alias")
 	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", app.ActiveWaitTimeout, "How long to wait for a newly created session to reach ACTIVE (e.g. 2m, 10m)")
 	return cmd
+}
+
+func applyTrackedTargetForEnsure(cfg *app.Config, target *app.TrackedTarget, bastionID, instanceID, privateIP, identityFile *string, targetUserExplicit bool) {
+	if cfg == nil || target == nil {
+		return
+	}
+	if bastionID != nil && strings.TrimSpace(*bastionID) == "" && strings.TrimSpace(target.BastionID) != "" {
+		*bastionID = strings.TrimSpace(target.BastionID)
+	}
+	if instanceID != nil && strings.TrimSpace(*instanceID) == "" && strings.TrimSpace(target.InstanceID) != "" {
+		*instanceID = strings.TrimSpace(target.InstanceID)
+	}
+	if privateIP != nil && strings.TrimSpace(*privateIP) == "" && strings.TrimSpace(target.PrivateIP) != "" {
+		*privateIP = strings.TrimSpace(target.PrivateIP)
+	}
+	if identityFile != nil && strings.TrimSpace(*identityFile) == "" && strings.TrimSpace(target.IdentityFile) != "" {
+		*identityFile = strings.TrimSpace(target.IdentityFile)
+	}
+	if !targetUserExplicit && strings.TrimSpace(target.User) != "" {
+		cfg.TargetUser = strings.TrimSpace(target.User)
+	}
+	if strings.TrimSpace(cfg.TerraformOutputsPath) == "" && strings.TrimSpace(target.TerraformOutputsPath) != "" {
+		cfg.TerraformOutputsPath = strings.TrimSpace(target.TerraformOutputsPath)
+	}
 }

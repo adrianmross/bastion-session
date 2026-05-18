@@ -24,6 +24,7 @@ type Config struct {
 	CurrentStatePath     string
 	TerraformOutputsPath string
 	TrackedBastionsPath  string
+	TrackedTargetsPath   string
 
 	// OCI-context scoping
 	OCIContextConfigPath string
@@ -42,16 +43,17 @@ type ContextRef struct {
 	User            string
 }
 
-func defaultPaths() (sshInclude, statePath, trackedPath string) {
+func defaultPaths() (sshInclude, statePath, trackedPath, trackedTargetsPath string) {
 	home, _ := os.UserHomeDir()
 	sshInclude = filepath.Join(home, ".ssh", "config.d", "bastion-session")
 	statePath = filepath.Join(home, ".cache", "bastion-session", "state.json")
 	trackedPath = filepath.Join(home, ".cache", "bastion-session", "tracked-bastions.json")
+	trackedTargetsPath = filepath.Join(home, ".cache", "bastion-session", "tracked-targets.json")
 	return
 }
 
 func ConfigFromEnv() Config {
-	sshInclude, statePath, trackedPath := defaultPaths()
+	sshInclude, statePath, trackedPath, trackedTargetsPath := defaultPaths()
 	cfg := Config{
 		Profile:             DefaultProfile,
 		Region:              DefaultRegion,
@@ -61,6 +63,7 @@ func ConfigFromEnv() Config {
 		SessionStatePath:    statePath,
 		CurrentStatePath:    filepath.Join(filepath.Dir(statePath), "current-bastion.json"),
 		TrackedBastionsPath: trackedPath,
+		TrackedTargetsPath:  trackedTargetsPath,
 		ContextScopeEnabled: true,
 	}
 	if v := os.Getenv("PROFILE"); v != "" {
@@ -96,6 +99,9 @@ func ConfigFromEnv() Config {
 	}
 	if v := os.Getenv("BASTION_TRACKED_PATH"); v != "" {
 		cfg.TrackedBastionsPath = v
+	}
+	if v := os.Getenv("BASTION_TRACKED_TARGETS_PATH"); v != "" {
+		cfg.TrackedTargetsPath = v
 	}
 	if v := os.Getenv("BASTION_CONTEXT_SCOPE"); v == "0" || v == "false" {
 		cfg.ContextScopeEnabled = false

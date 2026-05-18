@@ -8,6 +8,11 @@ import (
 )
 
 func ReadOutputs(path string) (map[string]any, error) {
+	resolved, err := ResolveTerraformOutputsInput(path)
+	if err != nil {
+		return nil, err
+	}
+	path = resolved
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -30,6 +35,26 @@ func ReadOutputs(path string) (map[string]any, error) {
 		result[k] = v
 	}
 	return result, nil
+}
+
+func ResolveTerraformOutputsInput(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("terraform outputs path is required")
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	if !st.IsDir() {
+		return path, nil
+	}
+	for _, name := range []string{"terraform.tfstate", "terraform.tfstate.json", "outputs.json"} {
+		candidate := filepath.Join(path, name)
+		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no terraform.tfstate, terraform.tfstate.json, or outputs.json found in %s", path)
 }
 
 func ResolveOutputsPath(cfg Config) string {

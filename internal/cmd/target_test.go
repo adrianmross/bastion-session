@@ -59,6 +59,57 @@ func TestTargetTrackFromTerraformOutputs(t *testing.T) {
 	}
 }
 
+func TestTargetImportFromTerraformDirectoryWithOverrides(t *testing.T) {
+	dir := t.TempDir()
+	trackedPath := filepath.Join(dir, "tracked-targets.json")
+	tfDir := filepath.Join(dir, "tf")
+	if err := os.MkdirAll(tfDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(tfDir, "terraform.tfstate")
+	state := `{"outputs":{"bastion_id":{"value":"ocid1.bastion.oc1..fromtf"},"instance_id":{"value":"ocid1.instance.oc1..i2"},"private_ip":{"value":"10.42.1.218"}}}`
+	if err := os.WriteFile(statePath, []byte(state), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{
+		"--no-context-scope",
+		"--tracked-targets-path", trackedPath,
+		"target", "import", "vmordws03",
+		"--terraform-outputs", tfDir,
+		"--user", "ubuntu",
+		"--identity-file", "~/.ssh/imported.key",
+		"--bastion-id", "ocid1.bastion.oc1..override",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("target import: %v\n%s", err, out.String())
+	}
+
+	target, err := app.FindTrackedTarget(trackedPath, "vmordws03")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target == nil {
+		t.Fatalf("expected tracked target")
+	}
+	for got, want := range map[string]string{
+		target.InstanceID:           "ocid1.instance.oc1..i2",
+		target.PrivateIP:            "10.42.1.218",
+		target.BastionID:            "ocid1.bastion.oc1..override",
+		target.User:                 "ubuntu",
+		target.IdentityFile:         "~/.ssh/imported.key",
+		target.TerraformOutputsPath: statePath,
+	} {
+		if got != want {
+			t.Fatalf("expected %q, got %q", want, got)
+		}
+	}
+}
+
 func TestApplyTrackedTargetForEnsureFillsMissingValues(t *testing.T) {
 	cfg := app.Config{TargetUser: app.DefaultTargetUser}
 	target := &app.TrackedTarget{

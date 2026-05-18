@@ -53,9 +53,12 @@ VERSION=v0.1.0 curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-s
 ./bastion-session ensure vmordws02              # create/refresh and write VM-facing SSH host
 ./bastion-session ensure vmordws02 -o json
 ./bastion-session target track vmordws02 --instance-id ocid1.instance... --private-ip 10.42.1.217 --bastion-id ocid1.bastion...
+./bastion-session target import vmordws02 --terraform-outputs ./terraform.tfstate
 ./bastion-session target list -o table
 ./bastion-session target show vmordws02 -o json
 ./bastion-session target rm vmordws02
+./bastion-session ssh-config show vmordws02 -o json
+./bastion-session doctor vmordws02 -o json
 ./bastion-session session list
 ./bastion-session session new <bastion-ref>
 ./bastion-session session new <bastion-ref> -o json
@@ -118,12 +121,23 @@ Targets can also be populated from Terraform outputs containing `bastion_id`,
 `instance_id`, and `private_ip`:
 
 ```bash
-bastion-session target track vmordws02 --terraform-outputs ./outputs.json
+bastion-session target import vmordws02 --terraform-outputs ./outputs.json
+bastion-session target import vmordws02 --terraform-outputs ./terraform-directory
 ```
 
 After tracking, `bastion-session ensure vmordws02` fills the target instance,
 private IP, target user, target identity file, and bastion ID from the registry
 unless those values are supplied explicitly on the command line.
+
+### Diagnostics
+
+Use `doctor` for a best-effort local health summary. It does not require live OCI
+to succeed; live session lookup errors are captured in the output.
+
+```bash
+bastion-session doctor vmordws02 -o json
+bastion-session ssh-config show vmordws02 -o json
+```
 
 ## Agent Contract
 

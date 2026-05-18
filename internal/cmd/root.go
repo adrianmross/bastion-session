@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/adrianmross/bastion-session/internal/app"
@@ -142,6 +143,8 @@ func newRootCmd() *cobra.Command {
 		newCurrentCmd(opts),
 		newTrackCmd(opts),
 		newTargetCmd(opts),
+		newDoctorCmd(opts),
+		newSSHConfigCmd(opts),
 		newSessionCmd(opts),
 		newServiceCmd(opts),
 		newTUICmd(opts),
@@ -157,13 +160,21 @@ func Execute() {
 }
 
 func printJSON(v any) error {
-	enc := json.NewEncoder(os.Stdout)
+	return printJSONTo(os.Stdout, v)
+}
+
+func printJSONTo(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
 }
 
 func printYAML(v any) error {
-	enc := yaml.NewEncoder(os.Stdout)
+	return printYAMLTo(os.Stdout, v)
+}
+
+func printYAMLTo(w io.Writer, v any) error {
+	enc := yaml.NewEncoder(w)
 	defer enc.Close()
 	return enc.Encode(v)
 }

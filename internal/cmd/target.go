@@ -22,7 +22,7 @@ type targetRow struct {
 
 func newTargetCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{Use: "target", Short: "Manage tracked VM targets"}
-	cmd.AddCommand(newTargetTrackCmd(opts), newTargetListCmd(opts), newTargetShowCmd(opts), newTargetRmCmd(opts))
+	cmd.AddCommand(newTargetTrackCmd(opts), newTargetImportCmd(opts), newTargetListCmd(opts), newTargetShowCmd(opts), newTargetRmCmd(opts))
 	return cmd
 }
 
@@ -86,6 +86,62 @@ func newTargetTrackCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&identityFile, "identity-file", "", "SSH private key for the target VM host alias")
 	cmd.Flags().StringVar(&bastionID, "bastion-id", "", "Bastion OCID for this target")
 	cmd.Flags().StringVar(&terraformOutputs, "terraform-outputs", "", "Path to Terraform state/outputs file for this target")
+	return cmd
+}
+
+func newTargetImportCmd(opts *rootOptions) *cobra.Command {
+	var user string
+	var identityFile string
+	var bastionID string
+	var terraformOutputs string
+	cmd := &cobra.Command{
+		Use:   "import <name>",
+		Short: "Import a tracked VM target from Terraform outputs or state",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := strings.TrimSpace(args[0])
+			source := strings.TrimSpace(terraformOutputs)
+			if source == "" {
+				return fmt.Errorf("--terraform-outputs is required")
+			}
+			resolvedSource, err := app.ResolveTerraformOutputsInput(source)
+			if err != nil {
+				return err
+			}
+			outputs, err := app.ReadOutputs(resolvedSource)
+			if err != nil {
+				return err
+			}
+			target := app.TrackedTarget{
+				Name:                 name,
+				InstanceID:           outputString(outputs, "instance_id"),
+				PrivateIP:            outputString(outputs, "private_ip"),
+				User:                 strings.TrimSpace(user),
+				IdentityFile:         strings.TrimSpace(identityFile),
+				BastionID:            strings.TrimSpace(bastionID),
+				TerraformOutputsPath: resolvedSource,
+				LastSeenAt:           time.Now().UTC(),
+			}
+			if target.BastionID == "" {
+				target.BastionID = outputString(outputs, "bastion_id")
+			}
+			if target.InstanceID == "" {
+				return fmt.Errorf("missing output %q in %s", "instance_id", resolvedSource)
+			}
+			if target.PrivateIP == "" {
+				return fmt.Errorf("missing output %q in %s", "private_ip", resolvedSource)
+			}
+			if err := app.UpsertTrackedTarget(opts.cfg.TrackedTargetsPath, target); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Imported target %s from %s\n", target.Name, resolvedSource)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&terraformOutputs, "terraform-outputs", "", "Terraform state/outputs file or directory containing terraform.tfstate/outputs.json")
+	cmd.Flags().StringVar(&user, "user", "", "Target OS user override")
+	cmd.Flags().StringVar(&identityFile, "identity-file", "", "SSH private key for the target VM host alias")
+	cmd.Flags().StringVar(&bastionID, "bastion-id", "", "Bastion OCID override for this target")
 	return cmd
 }
 

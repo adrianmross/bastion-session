@@ -18,6 +18,8 @@ type doctorReport struct {
 	Session     doctorSession    `json:"session" yaml:"session"`
 	SSHInclude  doctorSSHInclude `json:"ssh_include" yaml:"ssh_include"`
 	SSHConfig   *app.SSHConfig   `json:"ssh_config,omitempty" yaml:"ssh_config,omitempty"`
+	Issues      []doctorIssue    `json:"issues,omitempty" yaml:"issues,omitempty"`
+	Fixes       []doctorFix      `json:"fixes,omitempty" yaml:"fixes,omitempty"`
 }
 
 type doctorConfig struct {
@@ -72,8 +74,40 @@ type doctorSSHInclude struct {
 	Present bool   `json:"present" yaml:"present"`
 }
 
+type doctorIssue struct {
+	Code     string `json:"code" yaml:"code"`
+	Severity string `json:"severity" yaml:"severity"`
+	Message  string `json:"message" yaml:"message"`
+}
+
+type doctorFix struct {
+	Code    string `json:"code" yaml:"code"`
+	Changed bool   `json:"changed" yaml:"changed"`
+	Message string `json:"message" yaml:"message"`
+}
+
+type doctorOptions struct {
+	Live bool
+	Fix  bool
+}
+
+type doctorExitError struct {
+	Code   int
+	Issues []doctorIssue
+}
+
+func (e doctorExitError) Error() string {
+	if len(e.Issues) == 0 {
+		return "doctor found issues"
+	}
+	return fmt.Sprintf("doctor found %d issue(s); first=%s", len(e.Issues), e.Issues[0].Code)
+}
+
 func newDoctorCmd(opts *rootOptions) *cobra.Command {
 	var output string
+	var cachedOnly bool
+	var noLive bool
+	var fix bool
 	cmd := &cobra.Command{
 		Use:   "doctor [host]",
 		Short: "Diagnose local bastion-session and SSH configuration",
@@ -83,25 +117,35 @@ func newDoctorCmd(opts *rootOptions) *cobra.Command {
 			if len(args) > 0 {
 				host = strings.TrimSpace(args[0])
 			}
-			report := buildDoctorReport(opts.cfg, host)
+			report := buildDoctorReport(opts.cfg, host, doctorOptions{Live: !(cachedOnly || noLive), Fix: fix})
 			switch strings.ToLower(output) {
 			case "", "text":
 				printDoctorText(cmd, report, host)
-				return nil
 			case "json":
-				return printJSONTo(cmd.OutOrStdout(), report)
+				if err := printJSONTo(cmd.OutOrStdout(), report); err != nil {
+					return err
+				}
 			case "yaml", "yml":
-				return printYAMLTo(cmd.OutOrStdout(), report)
+				if err := printYAMLTo(cmd.OutOrStdout(), report); err != nil {
+					return err
+				}
 			default:
 				return fmt.Errorf("unsupported output format: %s", output)
 			}
+			if len(report.Issues) > 0 {
+				return doctorExitError{Code: doctorExitCode(report.Issues), Issues: report.Issues}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
+	cmd.Flags().BoolVar(&cachedOnly, "cached", false, "Use cached local state only; do not call live OCI APIs")
+	cmd.Flags().BoolVar(&noLive, "no-live", false, "Use cached local state only; do not call live OCI APIs")
+	cmd.Flags().BoolVar(&fix, "fix", false, "Apply safe local-only repairs such as SSH include and host fragment regeneration")
 	return cmd
 }
 
-func buildDoctorReport(cfg app.Config, host string) doctorReport {
+func buildDoctorReport(cfg app.Config, host string, opts doctorOptions) doctorReport {
 	report := doctorReport{
 		Config: doctorConfig{
 			Profile:             cfg.Profile,
@@ -141,15 +185,27 @@ func buildDoctorReport(cfg app.Config, host string) doctorReport {
 		report.Current.TrackedCount = len(tracked)
 	}
 
+	var cachedSession *app.BastionSession
 	if cached, err := app.LoadSession(cfg.SessionStatePath); err != nil {
 		report.Session.CachedError = err.Error()
 	} else if cached != nil {
+		cachedSession = cached
 		report.Session.Cached = doctorSessionFromApp(*cached)
-		client := app.OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
-		if live, err := client.GetSession(cached.ID); err != nil {
-			report.Session.LiveError = err.Error()
+		if opts.Live {
+			client := app.OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
+			if live, err := client.GetSession(cached.ID); err != nil {
+				report.Session.LiveError = err.Error()
+			} else {
+				report.Session.Live = doctorSessionFromApp(live)
+			}
+		}
+	}
+
+	if opts.Fix {
+		if err := ensureDoctorSSHInclude(cfg.SSHIncludePath); err != nil {
+			report.Fixes = append(report.Fixes, doctorFix{Code: "ssh_include_fix_failed", Message: err.Error()})
 		} else {
-			report.Session.Live = doctorSessionFromApp(live)
+			report.Fixes = append(report.Fixes, doctorFix{Code: "ssh_include_ensured", Changed: true, Message: "ensured SSH include path is configured"})
 		}
 	}
 
@@ -164,15 +220,35 @@ func buildDoctorReport(cfg app.Config, host string) doctorReport {
 	}
 
 	if host != "" {
+		var trackedTarget *app.TrackedTarget
 		if target, err := app.FindTrackedTarget(cfg.TrackedTargetsPath, host); err == nil && target != nil {
+			trackedTarget = target
 			row := targetRows([]app.TrackedTarget{*target})[0]
 			report.Target = &row
 		} else if err != nil {
 			report.TargetError = err.Error()
 		}
+		if opts.Fix && trackedTarget != nil && cachedSession != nil && strings.EqualFold(cachedSession.LifecycleState, "ACTIVE") && !sessionExpired(*cachedSession) {
+			targetUser := trackedTarget.User
+			if strings.TrimSpace(targetUser) == "" {
+				targetUser = cfg.TargetUser
+			}
+			if err := app.UpdateSSHFragmentWithTarget(cfg, cachedSession.ID, app.TargetSSHHost{
+				Alias:        host,
+				HostName:     trackedTarget.PrivateIP,
+				User:         targetUser,
+				IdentityFile: trackedTarget.IdentityFile,
+				ProxyJump:    cfg.Profile + "-bastion",
+			}); err != nil {
+				report.Fixes = append(report.Fixes, doctorFix{Code: "ssh_fragment_fix_failed", Message: err.Error()})
+			} else {
+				report.Fixes = append(report.Fixes, doctorFix{Code: "ssh_fragment_regenerated", Changed: true, Message: "regenerated bastion and host SSH fragment from cached active session"})
+			}
+		}
 		sshCfg, _ := app.ReadSSHConfig(host)
 		report.SSHConfig = &sshCfg
 	}
+	report.Issues = doctorIssues(report, host)
 	return report
 }
 
@@ -194,6 +270,84 @@ func doctorSessionFromApp(s app.BastionSession) *doctorSessionInfo {
 		}
 	}
 	return info
+}
+
+func sessionExpired(s app.BastionSession) bool {
+	return !s.TimeExpires.IsZero() && !s.TimeExpires.After(time.Now())
+}
+
+func ensureDoctorSSHInclude(path string) error {
+	if err := app.EnsureSSHInclude(path); err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return os.WriteFile(path, []byte("# Managed by bastion-session CLI\n"), 0o600)
+}
+
+func doctorIssues(report doctorReport, host string) []doctorIssue {
+	issues := []doctorIssue{}
+	add := func(code, severity, message string) {
+		issues = append(issues, doctorIssue{Code: code, Severity: severity, Message: message})
+	}
+	if !report.Current.Available {
+		add("current_bastion_missing", "error", "no current bastion is selected")
+	}
+	if report.Session.Cached == nil {
+		add("cached_session_missing", "warning", "no cached bastion session is available")
+	} else {
+		if !strings.EqualFold(report.Session.Cached.Lifecycle, "ACTIVE") {
+			add("cached_session_not_active", "error", "cached bastion session is not ACTIVE")
+		}
+		if strings.HasPrefix(report.Session.Cached.ExpiresIn, "expired ") {
+			add("cached_session_expired", "error", "cached bastion session is expired")
+		}
+	}
+	if report.Session.Live != nil {
+		if !strings.EqualFold(report.Session.Live.Lifecycle, "ACTIVE") {
+			add("live_session_not_active", "error", "live bastion session is not ACTIVE")
+		}
+		if strings.HasPrefix(report.Session.Live.ExpiresIn, "expired ") {
+			add("live_session_expired", "error", "live bastion session is expired")
+		}
+	}
+	if !report.SSHInclude.Exists || report.SSHInclude.IsDir {
+		add("ssh_include_missing", "error", "SSH include fragment is missing or invalid")
+	}
+	if host != "" {
+		if report.Target == nil {
+			add("tracked_target_missing", "error", "host is not tracked as a bastion target")
+		}
+		if report.SSHConfig == nil || report.SSHConfig.Error != "" {
+			add("ssh_config_unreadable", "error", "effective ssh config could not be read")
+		} else {
+			if strings.TrimSpace(report.SSHConfig.HostName) == "" {
+				add("ssh_hostname_missing", "error", "effective ssh config has no HostName")
+			}
+			if strings.TrimSpace(report.SSHConfig.ProxyJump) == "" {
+				add("ssh_proxyjump_missing", "error", "effective ssh config has no ProxyJump")
+			}
+			if report.Target != nil && strings.TrimSpace(report.Target.PrivateIP) != "" && strings.TrimSpace(report.SSHConfig.HostName) != strings.TrimSpace(report.Target.PrivateIP) {
+				add("ssh_hostname_mismatch", "error", "effective ssh HostName does not match tracked target private IP")
+			}
+		}
+	}
+	return issues
+}
+
+func doctorExitCode(issues []doctorIssue) int {
+	for _, issue := range issues {
+		if strings.HasPrefix(issue.Code, "ssh_") {
+			return 4
+		}
+		if strings.Contains(issue.Code, "session") {
+			return 3
+		}
+	}
+	return 2
 }
 
 func formatTime(t time.Time) string {
@@ -254,6 +408,12 @@ func printDoctorText(cmd *cobra.Command, report doctorReport, host string) {
 				fmt.Fprintf(cmd.OutOrStdout(), "SSH Config Error: %s\n", report.SSHConfig.Error)
 			}
 		}
+	}
+	for _, fix := range report.Fixes {
+		fmt.Fprintf(cmd.OutOrStdout(), "Fix: %s changed=%t %s\n", fix.Code, fix.Changed, fix.Message)
+	}
+	for _, issue := range report.Issues {
+		fmt.Fprintf(cmd.OutOrStdout(), "Issue: %s severity=%s %s\n", issue.Code, issue.Severity, issue.Message)
 	}
 }
 

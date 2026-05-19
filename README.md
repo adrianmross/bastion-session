@@ -131,12 +131,26 @@ unless those values are supplied explicitly on the command line.
 
 ### Diagnostics
 
-Use `doctor` for a best-effort local health summary. It does not require live OCI
-to succeed; live session lookup errors are captured in the output.
+Use `doctor` for a local health summary. By default it includes a live OCI
+session lookup when cached session state exists. Use `--cached` or `--no-live`
+when an agent only needs local state and should avoid OCI API calls.
 
 ```bash
 bastion-session doctor vmordws02 -o json
+bastion-session doctor vmordws02 --cached -o json
 bastion-session ssh-config show vmordws02 -o json
+```
+
+Doctor reports machine-readable `issues` and exits nonzero when it finds broken
+state. Exit code `2` indicates selection/target state, `3` indicates session
+state, and `4` indicates SSH configuration state.
+
+For safe local repairs, `doctor --fix` can recreate the SSH include file and,
+when a host plus cached active session are available, regenerate the SSH fragment.
+It does not create OCI sessions; use `ensure <host>` for that.
+
+```bash
+bastion-session doctor vmordws02 --fix -o json
 ```
 
 ## Agent Contract

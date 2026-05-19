@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -108,5 +109,136 @@ exit 2
 	}
 	if report.SSHConfig == nil || report.SSHConfig.ProxyJump != "oabcs1-terraform-bastion" {
 		t.Fatalf("expected parsed ssh config: %#v", report.SSHConfig)
+	}
+}
+
+func TestDoctorCachedSkipsLiveOCIProbe(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	currentPath := filepath.Join(dir, "current.json")
+	includePath := filepath.Join(dir, "ssh", "config.d", "bastion-session")
+	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(includePath, []byte("Host test-bastion\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SaveSession(statePath, app.BastionSession{
+		ID:             "ocid1.bastionsession.oc1..s1",
+		LifecycleState: "ACTIVE",
+		TimeExpires:    time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SaveCurrent(currentPath, app.CurrentBastion{
+		ID:         "ocid1.bastion.oc1..b1",
+		Name:       "b1",
+		Profile:    "DEFAULT",
+		Region:     "us-chicago-1",
+		Source:     "test",
+		SelectedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{
+		"--no-context-scope",
+		"--state-path", statePath,
+		"--current-path", currentPath,
+		"--ssh-include", includePath,
+		"doctor", "--cached", "-o", "json",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("doctor: %v\n%s", err, out.String())
+	}
+
+	var report doctorReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("json output: %v\n%s", err, out.String())
+	}
+	if report.Session.Live != nil || report.Session.LiveError != "" {
+		t.Fatalf("expected cached mode to skip live probe: %#v", report.Session)
+	}
+}
+
+func TestDoctorReportsExpiredSessionIssue(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	includePath := filepath.Join(dir, "ssh", "config.d", "bastion-session")
+	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(includePath, []byte("Host test-bastion\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SaveSession(statePath, app.BastionSession{
+		ID:             "ocid1.bastionsession.oc1..expired",
+		LifecycleState: "ACTIVE",
+		TimeExpires:    time.Now().Add(-time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{
+		"--no-context-scope",
+		"--state-path", statePath,
+		"--ssh-include", includePath,
+		"doctor", "--cached", "-o", "json",
+	})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected doctor error for expired session")
+	}
+	var exitErr doctorExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 3 {
+		t.Fatalf("expected session exit error, got %T %v", err, err)
+	}
+	var report doctorReport
+	if jsonErr := json.Unmarshal(out.Bytes(), &report); jsonErr != nil {
+		t.Fatalf("json output: %v\n%s", jsonErr, out.String())
+	}
+	found := false
+	for _, issue := range report.Issues {
+		if issue.Code == "cached_session_expired" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected cached_session_expired issue: %#v", report.Issues)
+	}
+}
+
+func TestDoctorFixCreatesMissingSSHInclude(t *testing.T) {
+	dir := t.TempDir()
+	includePath := filepath.Join(dir, "ssh", "config.d", "bastion-session")
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{
+		"--no-context-scope",
+		"--ssh-include", includePath,
+		"doctor", "--fix", "-o", "json",
+	})
+	if err := root.Execute(); err == nil {
+		t.Fatalf("expected remaining current/session issues")
+	}
+	if _, err := os.Stat(includePath); err != nil {
+		t.Fatalf("expected fix to create include file: %v", err)
+	}
+	var report doctorReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("json output: %v\n%s", err, out.String())
+	}
+	if len(report.Fixes) == 0 || report.Fixes[0].Code != "ssh_include_ensured" {
+		t.Fatalf("expected include fix in report: %#v", report.Fixes)
 	}
 }

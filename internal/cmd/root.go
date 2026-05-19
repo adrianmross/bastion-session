@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -155,6 +156,10 @@ func newRootCmd() *cobra.Command {
 func Execute() {
 	if err := newRootCmd().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		var exitErr doctorExitError
+		if ok := errors.As(err, &exitErr); ok && exitErr.Code > 0 {
+			os.Exit(exitErr.Code)
+		}
 		os.Exit(1)
 	}
 }

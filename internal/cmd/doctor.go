@@ -64,6 +64,7 @@ type doctorSessionInfo struct {
 	Created          string `json:"created,omitempty" yaml:"created,omitempty"`
 	Expires          string `json:"expires,omitempty" yaml:"expires,omitempty"`
 	ExpiresIn        string `json:"expires_in,omitempty" yaml:"expires_in,omitempty"`
+	Warning          string `json:"warning,omitempty" yaml:"warning,omitempty"`
 }
 
 type doctorSSHInclude struct {
@@ -132,8 +133,8 @@ func newDoctorCmd(opts *rootOptions) *cobra.Command {
 			default:
 				return fmt.Errorf("unsupported output format: %s", output)
 			}
-			if len(report.Issues) > 0 {
-				return doctorExitError{Code: doctorExitCode(report.Issues), Issues: report.Issues}
+			if errorIssues := doctorErrorIssues(report.Issues); len(errorIssues) > 0 {
+				return doctorExitError{Code: doctorExitCode(errorIssues), Issues: errorIssues}
 			}
 			return nil
 		},
@@ -263,11 +264,13 @@ func doctorSessionFromApp(s app.BastionSession) *doctorSessionInfo {
 		Expires:          formatTime(s.TimeExpires),
 	}
 	if !s.TimeExpires.IsZero() {
+		now := time.Now()
 		if s.TimeExpires.After(time.Now()) {
 			info.ExpiresIn = time.Until(s.TimeExpires).Round(time.Second).String()
 		} else {
 			info.ExpiresIn = "expired " + time.Since(s.TimeExpires).Round(time.Second).String() + " ago"
 		}
+		info.Warning = app.SessionExpiryWarning(s.TimeExpires, now)
 	}
 	return info
 }
@@ -305,6 +308,9 @@ func doctorIssues(report doctorReport, host string) []doctorIssue {
 		if strings.HasPrefix(report.Session.Cached.ExpiresIn, "expired ") {
 			add("cached_session_expired", "error", "cached bastion session is expired")
 		}
+		if report.Session.Cached.Warning != "" {
+			add("cached_session_near_expiry", "warning", report.Session.Cached.Warning)
+		}
 	}
 	if report.Session.Live != nil {
 		if !strings.EqualFold(report.Session.Live.Lifecycle, "ACTIVE") {
@@ -312,6 +318,9 @@ func doctorIssues(report doctorReport, host string) []doctorIssue {
 		}
 		if strings.HasPrefix(report.Session.Live.ExpiresIn, "expired ") {
 			add("live_session_expired", "error", "live bastion session is expired")
+		}
+		if report.Session.Live.Warning != "" {
+			add("live_session_near_expiry", "warning", report.Session.Live.Warning)
 		}
 	}
 	if !report.SSHInclude.Exists || report.SSHInclude.IsDir {
@@ -336,6 +345,16 @@ func doctorIssues(report doctorReport, host string) []doctorIssue {
 		}
 	}
 	return issues
+}
+
+func doctorErrorIssues(issues []doctorIssue) []doctorIssue {
+	errorsOnly := []doctorIssue{}
+	for _, issue := range issues {
+		if strings.EqualFold(issue.Severity, "error") {
+			errorsOnly = append(errorsOnly, issue)
+		}
+	}
+	return errorsOnly
 }
 
 func doctorHostUsableWithoutTrackedTarget(report doctorReport) bool {
@@ -397,6 +416,9 @@ func printDoctorText(cmd *cobra.Command, report doctorReport, host string) {
 	}
 	if report.Session.Cached != nil {
 		fmt.Fprintf(cmd.OutOrStdout(), "Cached Session: %s (%s)\n", report.Session.Cached.ID, emptyDash(report.Session.Cached.Lifecycle))
+		if report.Session.Cached.Warning != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "Cached Session Warning: %s\n", report.Session.Cached.Warning)
+		}
 	} else if report.Session.CachedError != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "Cached Session Error: %s\n", report.Session.CachedError)
 	} else {
@@ -404,6 +426,9 @@ func printDoctorText(cmd *cobra.Command, report doctorReport, host string) {
 	}
 	if report.Session.Live != nil {
 		fmt.Fprintf(cmd.OutOrStdout(), "Live Session: %s (%s)\n", report.Session.Live.ID, emptyDash(report.Session.Live.Lifecycle))
+		if report.Session.Live.Warning != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "Live Session Warning: %s\n", report.Session.Live.Warning)
+		}
 	} else if report.Session.LiveError != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "Live Session Error: %s\n", report.Session.LiveError)
 	}

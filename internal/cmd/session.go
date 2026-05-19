@@ -30,7 +30,7 @@ type sessionNewResult struct {
 
 func newSessionCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{Use: "session", Short: "Manage bastion sessions"}
-	cmd.AddCommand(newSessionListCmd(opts), newSessionUseCmd(opts), newSessionNewCmd(opts), newSessionWaitCmd(opts))
+	cmd.AddCommand(newSessionListCmd(opts), newSessionUseCmd(opts), newSessionNewCmd(opts), newSessionWaitCmd(opts), newSessionPruneCmd(opts), newSessionRenewCmd(opts))
 	return cmd
 }
 
@@ -278,5 +278,87 @@ func newSessionWaitCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().DurationVar(&timeout, "timeout", app.ActiveWaitTimeout, "Maximum wait time for ACTIVE (e.g. 2m, 10m, 30m)")
 	cmd.Flags().DurationVar(&poll, "poll", app.ActivePollIntervalSeconds, "Polling interval while waiting (e.g. 5s, 15s)")
 	cmd.Flags().BoolVar(&verbose, "verbose", true, "Show lifecycle polling output while waiting")
+	return cmd
+}
+
+func newSessionPruneCmd(opts *rootOptions) *cobra.Command {
+	var output string
+	cmd := &cobra.Command{
+		Use:   "prune",
+		Short: "Remove expired cached session state",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result, err := app.PruneExpiredSession(opts.cfg.SessionStatePath, time.Now())
+			if err != nil {
+				return err
+			}
+			switch strings.ToLower(output) {
+			case "", "text", "table":
+				if result.Pruned {
+					fmt.Fprintf(cmd.OutOrStdout(), "Pruned cached session %s\n", result.SessionID)
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "No session pruned: %s\n", result.Reason)
+				}
+				return nil
+			case "json":
+				return printJSONTo(cmd.OutOrStdout(), result)
+			case "yaml", "yml":
+				return printYAMLTo(cmd.OutOrStdout(), result)
+			default:
+				return fmt.Errorf("unsupported output format: %s", output)
+			}
+		},
+	}
+	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
+	return cmd
+}
+
+func newSessionRenewCmd(opts *rootOptions) *cobra.Command {
+	var bastionID string
+	var instanceID string
+	var privateIP string
+	var keyOverride string
+	var targetIdentityFile string
+	var output string
+	var waitTimeout time.Duration
+	cmd := &cobra.Command{
+		Use:   "renew <ssh-host>",
+		Short: "Ensure/refresh an active session for a tracked SSH host",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := runEnsureHost(&opts.cfg, args[0], ensureRunOptions{
+				BastionID:          bastionID,
+				InstanceID:         instanceID,
+				PrivateIP:          privateIP,
+				KeyOverride:        keyOverride,
+				TargetIdentityFile: targetIdentityFile,
+				WaitTimeout:        waitTimeout,
+				TargetUserExplicit: opts.targetUser != "",
+			})
+			if err != nil {
+				return err
+			}
+			switch strings.ToLower(output) {
+			case "", "text", "table":
+				fmt.Fprintf(cmd.OutOrStdout(), "Renewed: %s\n", result.ConnectCommand)
+				fmt.Fprintf(cmd.OutOrStdout(), "Session: %s\n", result.SessionID)
+				fmt.Fprintf(cmd.OutOrStdout(), "Expires: %s\n", result.ExpiresAt)
+				return nil
+			case "json":
+				return printJSONTo(cmd.OutOrStdout(), result)
+			case "yaml", "yml":
+				return printYAMLTo(cmd.OutOrStdout(), result)
+			default:
+				return fmt.Errorf("unsupported output format: %s", output)
+			}
+		},
+	}
+	cmd.Flags().StringVar(&bastionID, "bastion-id", "", "Bastion OCID (defaults to current selected bastion)")
+	cmd.Flags().StringVar(&instanceID, "instance-id", "", "Target instance OCID override (otherwise tracked target/Terraform outputs)")
+	cmd.Flags().StringVar(&privateIP, "private-ip", "", "Target private IP override (otherwise tracked target/Terraform outputs)")
+	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override when creating a new session")
+	cmd.Flags().StringVar(&targetIdentityFile, "target-identity-file", "", "SSH private key for the target VM host alias")
+	cmd.Flags().StringVar(&targetIdentityFile, "identity-file", "", "SSH private key for the target VM host alias")
+	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
+	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", app.ActiveWaitTimeout, "How long to wait for a newly created session to reach ACTIVE (e.g. 2m, 10m)")
 	return cmd
 }

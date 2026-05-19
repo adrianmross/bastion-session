@@ -12,6 +12,7 @@ type Status struct {
 	Lifecycle string `json:"lifecycle" yaml:"lifecycle"`
 	Expires   string `json:"expires" yaml:"expires"`
 	ExpiresIn string `json:"expires_in" yaml:"expires_in"`
+	Warning   string `json:"warning,omitempty" yaml:"warning,omitempty"`
 	Profile   string `json:"profile" yaml:"profile"`
 	Region    string `json:"region" yaml:"region"`
 	Context   string `json:"context,omitempty" yaml:"context,omitempty"`
@@ -367,6 +368,7 @@ func SessionStatus(cfg Config) (Status, error) {
 		Profile:   cfg.Profile,
 		Region:    cfg.Region,
 	}
+	st.Warning = SessionExpiryWarning(s.TimeExpires, time.Now())
 	if cfg.ScopedContext != nil {
 		st.Context = cfg.ScopedContext.Name
 	}

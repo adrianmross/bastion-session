@@ -115,6 +115,7 @@ exit 2
 func TestDoctorCachedSkipsLiveOCIProbe(t *testing.T) {
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "state.json")
+	currentPath := filepath.Join(dir, "current.json")
 	includePath := filepath.Join(dir, "ssh", "config.d", "bastion-session")
 	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
 		t.Fatal(err)
@@ -129,6 +130,16 @@ func TestDoctorCachedSkipsLiveOCIProbe(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := app.SaveCurrent(currentPath, app.CurrentBastion{
+		ID:         "ocid1.bastion.oc1..b1",
+		Name:       "b1",
+		Profile:    "DEFAULT",
+		Region:     "us-chicago-1",
+		Source:     "test",
+		SelectedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	root := newRootCmd()
 	var out bytes.Buffer
@@ -137,6 +148,7 @@ func TestDoctorCachedSkipsLiveOCIProbe(t *testing.T) {
 	root.SetArgs([]string{
 		"--no-context-scope",
 		"--state-path", statePath,
+		"--current-path", currentPath,
 		"--ssh-include", includePath,
 		"doctor", "--cached", "-o", "json",
 	})

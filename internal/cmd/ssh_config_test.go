@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/adrianmross/bastion-session/internal/app"
 )
 
 func TestSSHConfigShowJSONUsesSSHEffectiveConfig(t *testing.T) {
@@ -47,5 +49,30 @@ func writeFakeSSH(t *testing.T, dir string, script string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSSHConfigAuditReportsCompetingHostBlocks(t *testing.T) {
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	configDir := filepath.Join(home, ".ssh", "config.d")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte("Host vmordws02\n  HostName old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	includePath := filepath.Join(configDir, "bastion-session")
+	if err := os.WriteFile(includePath, []byte("Host vmordws02\n  HostName 10.42.1.217\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+
+	audit := app.AuditSSHConfig("vmordws02", includePath)
+	if !audit.Competing {
+		t.Fatalf("expected competing Host blocks: %#v", audit)
+	}
+	if len(audit.Matches) != 2 {
+		t.Fatalf("expected two matching Host blocks, got %#v", audit.Matches)
 	}
 }

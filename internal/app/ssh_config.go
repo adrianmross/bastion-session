@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -20,6 +22,22 @@ type SSHConfig struct {
 	IdentityFiles []string `json:"identity_files,omitempty" yaml:"identity_files,omitempty"`
 	Raw           string   `json:"-" yaml:"-"`
 	Error         string   `json:"error,omitempty" yaml:"error,omitempty"`
+}
+
+type SSHHostBlock struct {
+	Path       string   `json:"path" yaml:"path"`
+	Line       int      `json:"line" yaml:"line"`
+	Patterns   []string `json:"patterns" yaml:"patterns"`
+	ExactMatch bool     `json:"exact_match" yaml:"exact_match"`
+}
+
+type SSHConfigAudit struct {
+	Host       string         `json:"host" yaml:"host"`
+	Files      []string       `json:"files" yaml:"files"`
+	Matches    []SSHHostBlock `json:"matches" yaml:"matches"`
+	Competing  bool           `json:"competing" yaml:"competing"`
+	Warning    string         `json:"warning,omitempty" yaml:"warning,omitempty"`
+	ScanErrors []string       `json:"scan_errors,omitempty" yaml:"scan_errors,omitempty"`
 }
 
 func ReadSSHConfig(host string) (SSHConfig, error) {
@@ -85,4 +103,110 @@ func ParseSSHConfig(host string, text string) SSHConfig {
 		}
 	}
 	return result
+}
+
+func AuditSSHConfig(host string, extraPaths ...string) SSHConfigAudit {
+	host = strings.TrimSpace(host)
+	audit := SSHConfigAudit{Host: host}
+	files := defaultSSHConfigScanPaths(extraPaths...)
+	audit.Files = files
+	exactMatches := 0
+	for _, path := range files {
+		blocks, err := scanSSHHostBlocks(path, host)
+		if err != nil {
+			audit.ScanErrors = append(audit.ScanErrors, fmt.Sprintf("%s: %v", path, err))
+			continue
+		}
+		for _, block := range blocks {
+			if block.ExactMatch {
+				exactMatches++
+			}
+			audit.Matches = append(audit.Matches, block)
+		}
+	}
+	audit.Competing = exactMatches > 1
+	if audit.Competing {
+		audit.Warning = fmt.Sprintf("found %d exact Host blocks for %s", exactMatches, host)
+	}
+	return audit
+}
+
+func defaultSSHConfigScanPaths(extraPaths ...string) []string {
+	seen := map[string]bool{}
+	var paths []string
+	add := func(path string) {
+		path = strings.TrimSpace(expandHome(path))
+		if path == "" || seen[path] {
+			return
+		}
+		seen[path] = true
+		paths = append(paths, path)
+	}
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		add(filepath.Join(home, ".ssh", "config"))
+		matches, _ := filepath.Glob(filepath.Join(home, ".ssh", "config.d", "*"))
+		for _, match := range matches {
+			add(match)
+		}
+	}
+	for _, path := range extraPaths {
+		add(path)
+	}
+	return paths
+}
+
+func scanSSHHostBlocks(path string, host string) ([]SSHHostBlock, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	blocks := []SSHHostBlock{}
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) < 2 || !strings.EqualFold(fields[0], "Host") {
+			continue
+		}
+		patterns := fields[1:]
+		exact := false
+		matches := false
+		for _, pattern := range patterns {
+			p := strings.TrimSpace(pattern)
+			if p == host {
+				exact = true
+				matches = true
+				continue
+			}
+			if ok, _ := filepath.Match(p, host); ok {
+				matches = true
+			}
+		}
+		if matches {
+			blocks = append(blocks, SSHHostBlock{Path: path, Line: i + 1, Patterns: patterns, ExactMatch: exact})
+		}
+	}
+	return blocks, nil
+}
+
+func expandHome(path string) string {
+	if path == "~" {
+		home, _ := os.UserHomeDir()
+		return home
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, _ := os.UserHomeDir()
+		if home == "" {
+			return path
+		}
+		return filepath.Join(home, strings.TrimPrefix(path, "~/"))
+	}
+	return path
 }

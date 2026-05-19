@@ -38,6 +38,9 @@ VERSION=v0.1.0 curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-s
 
 ```bash
 ./bastion-session --version
+./bastion-session --version --json
+./bastion-session version -o json
+./bastion-session paths -o json
 ./bastion-session refresh --ssh-public-key ~/.ssh/keys/mykey.pub
 ./bastion-session status
 ./bastion-session watch --interval 600
@@ -54,15 +57,20 @@ VERSION=v0.1.0 curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-s
 ./bastion-session ensure vmordws02 -o json
 ./bastion-session target track vmordws02 --instance-id ocid1.instance... --private-ip 10.42.1.217 --bastion-id ocid1.bastion...
 ./bastion-session target import vmordws02 --terraform-outputs ./terraform.tfstate
+./bastion-session target reconcile vmordws02 --cached -o json
 ./bastion-session target list -o table
 ./bastion-session target show vmordws02 -o json
 ./bastion-session target rm vmordws02
 ./bastion-session ssh-config show vmordws02 -o json
+./bastion-session ssh-config audit vmordws02 -o json
 ./bastion-session doctor vmordws02 -o json
+./bastion-session explain vmordws02 -o json
 ./bastion-session session list
 ./bastion-session session new <bastion-ref>
 ./bastion-session session new <bastion-ref> -o json
 ./bastion-session session new <bastion-ref> --key ~/.ssh/id_ed25519.pub
+./bastion-session session renew vmordws02 -o json
+./bastion-session session prune -o json
 ./bastion-session session use <session-id-or-ref>
 ./bastion-session track rm <ref-or-ocid>
 ./bastion-session track prune
@@ -129,6 +137,18 @@ After tracking, `bastion-session ensure vmordws02` fills the target instance,
 private IP, target user, target identity file, and bastion ID from the registry
 unless those values are supplied explicitly on the command line.
 
+`target reconcile <host>` is the operator recovery path when a host already
+works through an active bastion session but is missing from the tracked target
+registry. It reads the effective `ssh -G <host>` configuration, verifies it
+against an active unexpired cached/live session, and upserts a tracked target
+from the session target resource, private IP, SSH user, identity file, and
+bastion ID.
+
+```bash
+bastion-session target reconcile vmordws02 -o json
+bastion-session target reconcile vmordws02 --cached -o json
+```
+
 ### Diagnostics
 
 Use `doctor` for a local health summary. By default it includes a live OCI
@@ -139,6 +159,8 @@ when an agent only needs local state and should avoid OCI API calls.
 bastion-session doctor vmordws02 -o json
 bastion-session doctor vmordws02 --cached -o json
 bastion-session ssh-config show vmordws02 -o json
+bastion-session ssh-config audit vmordws02 -o json
+bastion-session explain vmordws02 -o json
 ```
 
 Doctor reports machine-readable `issues` and exits nonzero when it finds broken
@@ -156,6 +178,19 @@ It does not create OCI sessions; use `ensure <host>` for that.
 ```bash
 bastion-session doctor vmordws02 --fix -o json
 ```
+
+`explain <host>` returns the same operator-oriented state without treating
+issues as command failure. It summarizes the SSH path, tracked target, cached
+and live session state, current bastion/context, and local include path.
+
+`ssh-config audit <host>` scans `~/.ssh/config`, `~/.ssh/config.d/*`, and the
+configured bastion-session include path for matching `Host` blocks so competing
+aliases are visible before editing SSH config.
+
+`status` and `doctor` report a warning when a cached/live session is within the
+near-expiry window. `session prune` removes only expired cached session state,
+and `session renew <host>` is an alias of the `ensure <host>` create/reuse path
+for operators who think in session lifecycle terms.
 
 ## Agent Contract
 

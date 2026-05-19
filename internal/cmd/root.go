@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/adrianmross/bastion-session/internal/app"
 	"github.com/spf13/cobra"
@@ -41,6 +42,7 @@ func newRootCmd() *cobra.Command {
 	opts := &rootOptions{}
 	var versionCount int
 	var verboseVersion bool
+	var versionJSON bool
 	cmd := &cobra.Command{
 		Use:           "bastion-session",
 		Short:         "OCI bastion session manager (Go rewrite with context-aware CLI/TUI)",
@@ -103,6 +105,9 @@ func newRootCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = args
 			if versionCount > 0 || verboseVersion {
+				if versionJSON {
+					return printJSONTo(cmd.OutOrStdout(), versionResult())
+				}
 				if versionCount > 1 || verboseVersion {
 					_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s (commit=%s date=%s)\n", version, commit, date)
 					return err
@@ -115,6 +120,7 @@ func newRootCmd() *cobra.Command {
 	}
 	cmd.Flags().CountVarP(&versionCount, "version", "v", "Print version (-vv for commit/date details)")
 	cmd.Flags().BoolVar(&verboseVersion, "vversion", false, "Print version with commit/date details")
+	cmd.Flags().BoolVar(&versionJSON, "json", false, "Print --version output as JSON")
 
 	pf := cmd.PersistentFlags()
 	pf.StringVarP(&opts.profile, "profile", "p", "", "OCI profile name")
@@ -148,8 +154,45 @@ func newRootCmd() *cobra.Command {
 		newSSHConfigCmd(opts),
 		newSessionCmd(opts),
 		newServiceCmd(opts),
+		newExplainCmd(opts),
+		newPathsCmd(opts),
+		newVersionCmd(),
 		newTUICmd(opts),
 	)
+	return cmd
+}
+
+type cliVersion struct {
+	Version string `json:"version" yaml:"version"`
+	Commit  string `json:"commit" yaml:"commit"`
+	Date    string `json:"date" yaml:"date"`
+}
+
+func versionResult() cliVersion {
+	return cliVersion{Version: version, Commit: commit, Date: date}
+}
+
+func newVersionCmd() *cobra.Command {
+	var output string
+	cmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result := versionResult()
+			switch strings.ToLower(output) {
+			case "", "text", "table":
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s (commit=%s date=%s)\n", result.Version, result.Commit, result.Date)
+				return err
+			case "json":
+				return printJSONTo(cmd.OutOrStdout(), result)
+			case "yaml", "yml":
+				return printYAMLTo(cmd.OutOrStdout(), result)
+			default:
+				return fmt.Errorf("unsupported output format: %s", output)
+			}
+		},
+	}
+	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
 	return cmd
 }
 

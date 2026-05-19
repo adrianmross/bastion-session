@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/adrianmross/bastion-session/internal/app"
 )
@@ -195,5 +197,62 @@ func TestTargetRmFailsWhenNameDoesNotExist(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `tracked target "missing" not found`) {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTargetReconcileFromCachedSessionAndSSHConfig(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	trackedPath := filepath.Join(dir, "tracked-targets.json")
+	binDir := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeSSH(t, binDir, `#!/bin/sh
+if [ "$1" = "-G" ] && [ "$2" = "vmordws02" ]; then
+  printf '%s\n' 'hostname 10.42.1.217' 'user opc' 'proxyjump test-bastion' 'identityfile ~/.ssh/vm.key'
+  exit 0
+fi
+exit 2
+`)
+	t.Setenv("PATH", binDir)
+	if err := app.SaveSession(statePath, app.BastionSession{
+		ID:               "ocid1.bastionsession.oc1..s1",
+		BastionID:        "ocid1.bastion.oc1..b1",
+		TargetResourceID: "ocid1.instance.oc1..i1",
+		TargetPrivateIP:  "10.42.1.217",
+		LifecycleState:   "ACTIVE",
+		TimeCreated:      time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC),
+		TimeExpires:      time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{
+		"--no-context-scope",
+		"--state-path", statePath,
+		"--tracked-targets-path", trackedPath,
+		"target", "reconcile", "vmordws02", "--cached", "-o", "json",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("target reconcile: %v\n%s", err, out.String())
+	}
+	var result targetReconcileResult
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("json output: %v\n%s", err, out.String())
+	}
+	if result.Target.Name != "vmordws02" || result.Target.PrivateIP != "10.42.1.217" || result.Target.InstanceID != "ocid1.instance.oc1..i1" {
+		t.Fatalf("unexpected reconcile target: %#v", result.Target)
+	}
+	target, err := app.FindTrackedTarget(trackedPath, "vmordws02")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target == nil || target.User != "opc" || target.IdentityFile != "~/.ssh/vm.key" || target.BastionID != "ocid1.bastion.oc1..b1" {
+		t.Fatalf("unexpected stored target: %#v", target)
 	}
 }

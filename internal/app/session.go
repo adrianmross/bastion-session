@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,19 @@ type BastionSession struct {
 
 func (s BastionSession) ExpiresIn() time.Duration {
 	return time.Until(s.TimeExpires)
+}
+
+const NearExpiryWarningTTL = 15 * time.Minute
+
+func SessionExpiryWarning(expires time.Time, now time.Time) string {
+	if expires.IsZero() || !expires.After(now) {
+		return ""
+	}
+	remaining := expires.Sub(now)
+	if remaining > NearExpiryWarningTTL {
+		return ""
+	}
+	return "session expires in " + remaining.Round(time.Second).String()
 }
 
 type sessionState struct {
@@ -53,4 +67,37 @@ func SaveSession(path string, s BastionSession) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+type SessionPruneResult struct {
+	StatePath string `json:"state_path" yaml:"state_path"`
+	Pruned    bool   `json:"pruned" yaml:"pruned"`
+	Reason    string `json:"reason" yaml:"reason"`
+	SessionID string `json:"session_id,omitempty" yaml:"session_id,omitempty"`
+	Expires   string `json:"expires,omitempty" yaml:"expires,omitempty"`
+}
+
+func PruneExpiredSession(path string, now time.Time) (SessionPruneResult, error) {
+	result := SessionPruneResult{StatePath: path, Reason: "no cached session"}
+	s, err := LoadSession(path)
+	if err != nil {
+		return result, err
+	}
+	if s == nil {
+		return result, nil
+	}
+	result.SessionID = strings.TrimSpace(s.ID)
+	if !s.TimeExpires.IsZero() {
+		result.Expires = s.TimeExpires.Format(time.RFC3339)
+	}
+	if s.TimeExpires.IsZero() || s.TimeExpires.After(now) {
+		result.Reason = "cached session is not expired"
+		return result, nil
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return result, err
+	}
+	result.Pruned = true
+	result.Reason = "expired cached session removed"
+	return result, nil
 }

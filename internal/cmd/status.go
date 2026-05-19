@@ -26,6 +26,9 @@ func newStatusCmd(opts *rootOptions) *cobra.Command {
 				fmt.Fprintf(os.Stdout, "Lifecycle:  %s\n", st.Lifecycle)
 				fmt.Fprintf(os.Stdout, "Expires:    %s\n", st.Expires)
 				fmt.Fprintf(os.Stdout, "Expires In: %s\n", st.ExpiresIn)
+				if st.Warning != "" {
+					fmt.Fprintf(os.Stdout, "Warning:    %s\n", st.Warning)
+				}
 				fmt.Fprintf(os.Stdout, "Profile:    %s\n", st.Profile)
 				fmt.Fprintf(os.Stdout, "Region:     %s\n", st.Region)
 				if st.Context != "" {

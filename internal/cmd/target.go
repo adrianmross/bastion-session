@@ -22,7 +22,7 @@ type targetRow struct {
 
 func newTargetCmd(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{Use: "target", Short: "Manage tracked VM targets"}
-	cmd.AddCommand(newTargetTrackCmd(opts), newTargetImportCmd(opts), newTargetListCmd(opts), newTargetShowCmd(opts), newTargetRmCmd(opts))
+	cmd.AddCommand(newTargetTrackCmd(opts), newTargetImportCmd(opts), newTargetReconcileCmd(opts), newTargetListCmd(opts), newTargetShowCmd(opts), newTargetRmCmd(opts))
 	return cmd
 }
 
@@ -143,6 +143,141 @@ func newTargetImportCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&identityFile, "identity-file", "", "SSH private key for the target VM host alias")
 	cmd.Flags().StringVar(&bastionID, "bastion-id", "", "Bastion OCID override for this target")
 	return cmd
+}
+
+type targetReconcileResult struct {
+	Target        targetRow     `json:"target" yaml:"target"`
+	Session       *sessionRow   `json:"session,omitempty" yaml:"session,omitempty"`
+	SSHConfig     app.SSHConfig `json:"ssh_config" yaml:"ssh_config"`
+	SessionSource string        `json:"session_source" yaml:"session_source"`
+	Updated       bool          `json:"updated" yaml:"updated"`
+}
+
+func newTargetReconcileCmd(opts *rootOptions) *cobra.Command {
+	var output string
+	var cachedOnly bool
+	cmd := &cobra.Command{
+		Use:   "reconcile <host>",
+		Short: "Create/update a tracked target from active session and effective SSH config",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := reconcileTargetFromRuntime(opts.cfg, args[0], !cachedOnly)
+			if err != nil {
+				return err
+			}
+			switch strings.ToLower(output) {
+			case "", "text", "table":
+				fmt.Fprintf(cmd.OutOrStdout(), "Reconciled target %s\n", result.Target.Name)
+				fmt.Fprintf(cmd.OutOrStdout(), "Private IP: %s\n", result.Target.PrivateIP)
+				fmt.Fprintf(cmd.OutOrStdout(), "Instance: %s\n", result.Target.InstanceID)
+				fmt.Fprintf(cmd.OutOrStdout(), "Bastion: %s\n", emptyDash(result.Target.BastionID))
+				return nil
+			case "json":
+				return printJSONTo(cmd.OutOrStdout(), result)
+			case "yaml", "yml":
+				return printYAMLTo(cmd.OutOrStdout(), result)
+			default:
+				return fmt.Errorf("unsupported output format: %s", output)
+			}
+		},
+	}
+	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
+	cmd.Flags().BoolVar(&cachedOnly, "cached", false, "Use cached session state only; do not call live OCI APIs")
+	cmd.Flags().BoolVar(&cachedOnly, "no-live", false, "Use cached session state only; do not call live OCI APIs")
+	return cmd
+}
+
+func reconcileTargetFromRuntime(cfg app.Config, host string, live bool) (targetReconcileResult, error) {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return targetReconcileResult{}, fmt.Errorf("host is required")
+	}
+	sshCfg, err := app.ReadSSHConfig(host)
+	if err != nil {
+		return targetReconcileResult{}, fmt.Errorf("read effective SSH config for %s: %w", host, err)
+	}
+	if strings.TrimSpace(sshCfg.HostName) == "" {
+		return targetReconcileResult{}, fmt.Errorf("effective SSH config for %s has no HostName", host)
+	}
+	if strings.TrimSpace(sshCfg.ProxyJump) == "" {
+		return targetReconcileResult{}, fmt.Errorf("effective SSH config for %s has no ProxyJump", host)
+	}
+	session, source, err := usableSessionForReconcile(cfg, live)
+	if err != nil {
+		return targetReconcileResult{}, err
+	}
+	if strings.TrimSpace(session.TargetPrivateIP) == "" {
+		return targetReconcileResult{}, fmt.Errorf("active session %s has no target private IP; cannot prove SSH HostName maps to the session", session.ID)
+	}
+	if strings.TrimSpace(session.TargetPrivateIP) != strings.TrimSpace(sshCfg.HostName) {
+		return targetReconcileResult{}, fmt.Errorf("effective SSH HostName %s does not match active session target private IP %s", sshCfg.HostName, session.TargetPrivateIP)
+	}
+	instanceID := strings.TrimSpace(session.TargetResourceID)
+	if instanceID == "" {
+		return targetReconcileResult{}, fmt.Errorf("active session %s has no target resource ID; pass explicit target track data instead", session.ID)
+	}
+	bastionID := strings.TrimSpace(session.BastionID)
+	if bastionID == "" {
+		if current, err := app.LoadCurrent(cfg.CurrentStatePath); err == nil && current != nil {
+			bastionID = strings.TrimSpace(current.ID)
+		}
+	}
+	target := app.TrackedTarget{
+		Name:         host,
+		InstanceID:   instanceID,
+		PrivateIP:    strings.TrimSpace(sshCfg.HostName),
+		User:         strings.TrimSpace(sshCfg.User),
+		IdentityFile: strings.TrimSpace(sshCfg.IdentityFile),
+		BastionID:    bastionID,
+		LastSeenAt:   time.Now().UTC(),
+	}
+	if err := app.UpsertTrackedTarget(cfg.TrackedTargetsPath, target); err != nil {
+		return targetReconcileResult{}, err
+	}
+	row := targetRows([]app.TrackedTarget{target})[0]
+	return targetReconcileResult{
+		Target: row,
+		Session: &sessionRow{
+			ID:        session.ID,
+			Lifecycle: session.LifecycleState,
+			Created:   session.TimeCreated.Format(time.RFC3339),
+			Expires:   session.TimeExpires.Format(time.RFC3339),
+		},
+		SSHConfig:     sshCfg,
+		SessionSource: source,
+		Updated:       true,
+	}, nil
+}
+
+func usableSessionForReconcile(cfg app.Config, live bool) (app.BastionSession, string, error) {
+	cached, err := app.LoadSession(cfg.SessionStatePath)
+	if err != nil {
+		return app.BastionSession{}, "", err
+	}
+	if cached == nil {
+		return app.BastionSession{}, "", fmt.Errorf("no cached session available")
+	}
+	if live && strings.TrimSpace(cached.ID) != "" {
+		client := app.OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
+		if s, err := client.GetSession(cached.ID); err == nil && sessionUsableForReconcile(s) {
+			_ = app.SaveSession(cfg.SessionStatePath, s)
+			return s, "live", nil
+		}
+	}
+	if sessionUsableForReconcile(*cached) {
+		return *cached, "cached", nil
+	}
+	return app.BastionSession{}, "", fmt.Errorf("cached session is not active and unexpired")
+}
+
+func sessionUsableForReconcile(s app.BastionSession) bool {
+	if !strings.EqualFold(strings.TrimSpace(s.LifecycleState), "ACTIVE") {
+		return false
+	}
+	if !s.TimeExpires.IsZero() && !s.TimeExpires.After(time.Now()) {
+		return false
+	}
+	return strings.TrimSpace(s.ID) != ""
 }
 
 func newTargetListCmd(opts *rootOptions) *cobra.Command {

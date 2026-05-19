@@ -68,10 +68,10 @@ Include ~/.ssh/config.d/bastion-session
 Track a compute target:
 
 ```bash
-bastion-session target track vmordws02 \
+bastion-session target track app-server-01 \
   --instance-id ocid1.instance.oc1..example \
-  --private-ip 10.42.1.217 \
-  --user opc \
+  --private-ip 10.0.1.25 \
+  --user cloud-user \
   --identity-file ~/.ssh/oci/example-vm.key \
   --bastion-id ocid1.bastion.oc1..example
 ```
@@ -80,19 +80,19 @@ Or import it from Terraform outputs containing `bastion_id`, `instance_id`, and
 `private_ip`:
 
 ```bash
-bastion-session target import vmordws02 --terraform-outputs ./terraform-directory
+bastion-session target import app-server-01 --terraform-outputs ./terraform-directory
 ```
 
 Create or reuse the session and write the VM-facing SSH host:
 
 ```bash
-bastion-session ensure vmordws02
+bastion-session ensure app-server-01
 ```
 
 Connect to the compute host:
 
 ```bash
-ssh vmordws02
+ssh app-server-01
 ```
 
 ## Host-Facing SSH
@@ -101,13 +101,13 @@ The generated include file keeps the internal bastion jump host current while
 preserving durable VM aliases:
 
 ```sshconfig
-Host vmordws02
-  HostName 10.42.1.217
-  User opc
-  ProxyJump oabcs1-terraform-bastion
+Host app-server-01
+  HostName 10.0.1.25
+  User cloud-user
+  ProxyJump dev-bastion
 ```
 
-Operators connect to `vmordws02`; session rotation only changes the managed
+Operators connect to `app-server-01`; session rotation only changes the managed
 bastion internals.
 
 ## Common Commands
@@ -122,18 +122,18 @@ bastion-session list --source tracked
 bastion-session use <ref-or-bastion-ocid> --source tracked --key ~/.ssh/id_ed25519.pub
 bastion-session current
 bastion-session connect -o json
-bastion-session ensure vmordws02 -o json
-bastion-session target import vmordws02 --terraform-outputs ./terraform-directory
-bastion-session target reconcile vmordws02 --cached -o json
+bastion-session ensure app-server-01 -o json
+bastion-session target import app-server-01 --terraform-outputs ./terraform-directory
+bastion-session target reconcile app-server-01 --cached -o json
 bastion-session target list -o table
-bastion-session target show vmordws02 -o json
-bastion-session ssh-config show vmordws02 -o json
-bastion-session ssh-config audit vmordws02 -o json
-bastion-session doctor vmordws02 -o json
-bastion-session explain vmordws02 -o json
+bastion-session target show app-server-01 -o json
+bastion-session ssh-config show app-server-01 -o json
+bastion-session ssh-config audit app-server-01 -o json
+bastion-session doctor app-server-01 -o json
+bastion-session explain app-server-01 -o json
 bastion-session session list
 bastion-session session new <bastion-ref> -o json
-bastion-session session renew vmordws02 -o json
+bastion-session session renew app-server-01 -o json
 bastion-session session prune -o json
 bastion-session tui
 ```
@@ -165,27 +165,27 @@ Use `explain` when you want operator-oriented state without treating warnings
 as command failure:
 
 ```bash
-bastion-session explain vmordws02 -o json
+bastion-session explain app-server-01 -o json
 ```
 
 Use `doctor` for health checks:
 
 ```bash
-bastion-session doctor vmordws02 -o json
-bastion-session doctor vmordws02 --cached -o json
+bastion-session doctor app-server-01 -o json
+bastion-session doctor app-server-01 --cached -o json
 ```
 
 Use `target reconcile` when a host already works through an active bastion
 session but is missing from the tracked target registry:
 
 ```bash
-bastion-session target reconcile vmordws02 --cached -o json
+bastion-session target reconcile app-server-01 --cached -o json
 ```
 
 Use `ssh-config audit` before editing SSH config:
 
 ```bash
-bastion-session ssh-config audit vmordws02 -o json
+bastion-session ssh-config audit app-server-01 -o json
 ```
 
 `status` and `doctor` warn when a cached or live session is within the

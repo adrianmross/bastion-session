@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  explain)
+    cat <<'JSON'
+{
+  "host": "vmordws02",
+  "ssh_config": {
+    "hostname": "10.42.1.217",
+    "user": "opc",
+    "proxyjump": "oabcs1-terraform-bastion"
+  },
+  "session": {
+    "lifecycle": "ACTIVE",
+    "expires_in": "26m14s"
+  }
+}
+JSON
+    ;;
+  session)
+    cat <<'JSON'
+{
+  "ok": true,
+  "action": "reused_active_session",
+  "target_private_ip": "10.42.1.217",
+  "ssh_host": "vmordws02"
+}
+JSON
+    ;;
+  ssh-config)
+    cat <<'JSON'
+{
+  "ok": true,
+  "include_path": "~/.ssh/config.d/bastion-session",
+  "matching_hosts": ["vmordws02"],
+  "issues": []
+}
+JSON
+    ;;
+  *)
+    echo "bastion-session demo shim: unsupported command" >&2
+    exit 2
+    ;;
+esac

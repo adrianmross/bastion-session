@@ -318,7 +318,7 @@ func doctorIssues(report doctorReport, host string) []doctorIssue {
 		add("ssh_include_missing", "error", "SSH include fragment is missing or invalid")
 	}
 	if host != "" {
-		if report.Target == nil {
+		if report.Target == nil && !doctorHostUsableWithoutTrackedTarget(report) {
 			add("tracked_target_missing", "error", "host is not tracked as a bastion target")
 		}
 		if report.SSHConfig == nil || report.SSHConfig.Error != "" {
@@ -336,6 +336,27 @@ func doctorIssues(report doctorReport, host string) []doctorIssue {
 		}
 	}
 	return issues
+}
+
+func doctorHostUsableWithoutTrackedTarget(report doctorReport) bool {
+	if report.SSHConfig == nil {
+		return false
+	}
+	if strings.TrimSpace(report.SSHConfig.HostName) == "" || strings.TrimSpace(report.SSHConfig.ProxyJump) == "" {
+		return false
+	}
+	for _, session := range []*doctorSessionInfo{report.Session.Cached, report.Session.Live} {
+		if session == nil {
+			continue
+		}
+		if !strings.EqualFold(session.Lifecycle, "ACTIVE") || strings.HasPrefix(session.ExpiresIn, "expired ") {
+			continue
+		}
+		if strings.TrimSpace(session.TargetPrivateIP) != "" && strings.TrimSpace(session.TargetPrivateIP) == strings.TrimSpace(report.SSHConfig.HostName) {
+			return true
+		}
+	}
+	return false
 }
 
 func doctorExitCode(issues []doctorIssue) int {

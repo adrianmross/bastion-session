@@ -1,120 +1,67 @@
-# Bastion Session CLI (Go)
+# Bastion Session CLI
 
-Go-based CLI/TUI utility to manage OCI bastion managed SSH sessions, maintain SSH config fragments,
-and keep sessions refreshed for remote workstation access.
+Manage OCI Bastion managed SSH sessions and keep durable `ssh <host>` aliases
+working for private OCI compute instances.
 
-## Features
+![bastion-session terminal demo](docs/assets/bastion-session-demo.gif)
 
-- Create OCI bastion managed SSH sessions (via OCI CLI).
-- Cache session metadata and render SSH config include files.
-- Watch mode with auto-refresh based on TTL.
-- OCI-context-aware scoping (profile/region/compartment from current `oci-context`).
-- List bastions in current scoped context, plus tracked bastions history.
-- Track VM targets by SSH alias for repeatable `ensure <host>` runs.
-- Interactive TUI (based on `oci-context` patterns) with scope banner and escape-to-tracked mode.
+`bastion-session` is the lower-level Go CLI that creates sessions, tracks
+compute targets, renders SSH config fragments, and explains what will happen
+before an operator connects.
 
-## Build
+## What It Does
 
-```bash
-cd bastion-session
-go build -o bastion-session ./cmd/bastion-session
-```
+- creates OCI Bastion managed SSH sessions through the OCI CLI
+- caches session metadata
+- writes SSH config include files
+- tracks compute targets by hostname
+- renews and prunes expiring sessions
+- audits effective SSH config
+- scopes operations from the active `oci-context`
+- returns stable JSON for scripts and agents
 
 ## Install
 
-One-line install (latest stable):
+Homebrew is the preferred install path:
+
+```bash
+brew tap adrianmross/tap
+brew install bastion-session
+```
+
+The Homebrew binary is installed at:
+
+```bash
+/opt/homebrew/bin/bastion-session
+```
+
+Source install:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-session/main/install.sh | bash
 ```
 
-Install a specific version:
+By default the installer writes to `/usr/local/bin`. Override it with `PREFIX`:
 
 ```bash
-VERSION=v0.1.0 curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-session/main/install.sh | bash
+PREFIX="$HOME/.local" curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-session/main/install.sh | bash
 ```
 
-## Usage
+Install a specific release:
 
 ```bash
-./bastion-session --version
-./bastion-session --version --json
-./bastion-session version -o json
-./bastion-session paths -o json
-./bastion-session refresh --ssh-public-key ~/.ssh/keys/mykey.pub
-./bastion-session status
-./bastion-session watch --interval 600
-./bastion-session list --source scoped
-./bastion-session list --source tracked
-# Use either full OCID or short unique ref from list (2-3 chars when possible)
-./bastion-session use <ref-or-bastion-ocid> --source tracked --key ~/.ssh/id_ed25519.pub
-./bastion-session current
-./bastion-session connect                       # create/refresh and connect
-./bastion-session connect --key ~/.ssh/id_ed25519.pub
-./bastion-session connect --session <sess-ref>  # reuse existing session
-./bastion-session connect -o json
-./bastion-session ensure vmordws02              # create/refresh and write VM-facing SSH host
-./bastion-session ensure vmordws02 -o json
-./bastion-session target track vmordws02 --instance-id ocid1.instance... --private-ip 10.42.1.217 --bastion-id ocid1.bastion...
-./bastion-session target import vmordws02 --terraform-outputs ./terraform.tfstate
-./bastion-session target reconcile vmordws02 --cached -o json
-./bastion-session target list -o table
-./bastion-session target show vmordws02 -o json
-./bastion-session target rm vmordws02
-./bastion-session ssh-config show vmordws02 -o json
-./bastion-session ssh-config audit vmordws02 -o json
-./bastion-session doctor vmordws02 -o json
-./bastion-session explain vmordws02 -o json
-./bastion-session session list
-./bastion-session session new <bastion-ref>
-./bastion-session session new <bastion-ref> -o json
-./bastion-session session new <bastion-ref> --key ~/.ssh/id_ed25519.pub
-./bastion-session session renew vmordws02 -o json
-./bastion-session session prune -o json
-./bastion-session session use <session-id-or-ref>
-./bastion-session track rm <ref-or-ocid>
-./bastion-session track prune
-./bastion-session tui
-./bastion-session service systemd generate --interval 300
-./bastion-session service launchd generate --interval 300
+VERSION=v0.8.0 curl -sSL https://raw.githubusercontent.com/adrianmross/bastion-session/main/install.sh | bash
 ```
 
-## Python Deprecation
+## Quickstart
 
-- The legacy Python implementation has been removed from this repository.
-- `bastion-session` is now Go-only (CLI + TUI).
+Make sure your SSH config includes the managed fragment:
 
-Ensure your `~/.ssh/config` includes:
-
-```
+```sshconfig
 Include ~/.ssh/config.d/bastion-session
 ```
 
-### VM-facing SSH aliases
-
-`ensure` creates or reuses a managed SSH session, updates the internal OCI
-bastion host alias, and writes a target VM alias that connects through it:
-
-```bash
-bastion-session ensure vmordws02 \
-  --target-identity-file ~/.ssh/oci/example-vm.key
-ssh vmordws02
-```
-
-Structured output is available for scripts and agents:
-
-```bash
-bastion-session ensure vmordws02 -o json
-```
-
-The generated SSH fragment keeps the internal `PROFILE-bastion` alias current
-when sessions rotate, while preserving VM-facing aliases such as `vmordws02`.
-
-### Tracked VM targets
-
-Tracked targets persist under `~/.cache/bastion-session/tracked-targets.json`
-by default. Override with `BASTION_TRACKED_TARGETS_PATH` or
-`--tracked-targets-path`.
+Track a compute target:
 
 ```bash
 bastion-session target track vmordws02 \
@@ -125,171 +72,191 @@ bastion-session target track vmordws02 \
   --bastion-id ocid1.bastion.oc1..example
 ```
 
-Targets can also be populated from Terraform outputs containing `bastion_id`,
-`instance_id`, and `private_ip`:
+Or import it from Terraform outputs containing `bastion_id`, `instance_id`, and
+`private_ip`:
 
 ```bash
-bastion-session target import vmordws02 --terraform-outputs ./outputs.json
 bastion-session target import vmordws02 --terraform-outputs ./terraform-directory
 ```
 
-After tracking, `bastion-session ensure vmordws02` fills the target instance,
-private IP, target user, target identity file, and bastion ID from the registry
-unless those values are supplied explicitly on the command line.
-
-`target reconcile <host>` is the operator recovery path when a host already
-works through an active bastion session but is missing from the tracked target
-registry. It reads the effective `ssh -G <host>` configuration, verifies it
-against an active unexpired cached/live session, and upserts a tracked target
-from the session target resource, private IP, SSH user, identity file, and
-bastion ID.
+Create or reuse the session and write the VM-facing SSH host:
 
 ```bash
-bastion-session target reconcile vmordws02 -o json
-bastion-session target reconcile vmordws02 --cached -o json
+bastion-session ensure vmordws02
 ```
 
-### Diagnostics
+Connect to the compute host:
 
-Use `doctor` for a local health summary. By default it includes a live OCI
-session lookup when cached session state exists. Use `--cached` or `--no-live`
-when an agent only needs local state and should avoid OCI API calls.
+```bash
+ssh vmordws02
+```
+
+## Host-Facing SSH
+
+The generated include file keeps the internal bastion jump host current while
+preserving durable VM aliases:
+
+```sshconfig
+Host vmordws02
+  HostName 10.42.1.217
+  User opc
+  ProxyJump oabcs1-terraform-bastion
+```
+
+Operators connect to `vmordws02`; session rotation only changes the managed
+bastion internals.
+
+## Common Commands
+
+```bash
+bastion-session --version
+bastion-session --version --json
+bastion-session version -o json
+bastion-session paths -o json
+bastion-session list --source scoped
+bastion-session list --source tracked
+bastion-session use <ref-or-bastion-ocid> --source tracked --key ~/.ssh/id_ed25519.pub
+bastion-session current
+bastion-session connect -o json
+bastion-session ensure vmordws02 -o json
+bastion-session target import vmordws02 --terraform-outputs ./terraform-directory
+bastion-session target reconcile vmordws02 --cached -o json
+bastion-session target list -o table
+bastion-session target show vmordws02 -o json
+bastion-session ssh-config show vmordws02 -o json
+bastion-session ssh-config audit vmordws02 -o json
+bastion-session doctor vmordws02 -o json
+bastion-session explain vmordws02 -o json
+bastion-session session list
+bastion-session session new <bastion-ref> -o json
+bastion-session session renew vmordws02 -o json
+bastion-session session prune -o json
+bastion-session tui
+```
+
+## Paths
+
+Use `paths` for script-safe local metadata:
+
+```bash
+bastion-session paths -o json
+```
+
+Typical paths:
+
+- Homebrew binary: `/opt/homebrew/bin/bastion-session`
+- Source install binary: `/usr/local/bin/bastion-session`
+- SSH include: `~/.ssh/config.d/bastion-session`
+- session cache: `~/.cache/bastion-session/state.json`
+- tracked targets: `~/.cache/bastion-session/tracked-targets.json`
+- tracked bastions: `~/.cache/bastion-session/tracked-bastions.json`
+- current bastion: `~/.cache/bastion-session/current-bastion.json`
+
+Override tracked targets with `BASTION_TRACKED_TARGETS_PATH` or
+`--tracked-targets-path`.
+
+## Recovery And Diagnostics
+
+Use `explain` when you want operator-oriented state without treating warnings
+as command failure:
+
+```bash
+bastion-session explain vmordws02 -o json
+```
+
+Use `doctor` for health checks:
 
 ```bash
 bastion-session doctor vmordws02 -o json
 bastion-session doctor vmordws02 --cached -o json
-bastion-session ssh-config show vmordws02 -o json
-bastion-session ssh-config audit vmordws02 -o json
-bastion-session explain vmordws02 -o json
 ```
 
-Doctor reports machine-readable `issues` and exits nonzero when it finds broken
-state. Exit code `2` indicates selection/target state, `3` indicates session
-state, and `4` indicates SSH configuration state.
-
-When a host is not in the tracked-target registry but an active cached/live
-session targets the same private IP as the effective SSH `HostName`, doctor
-treats the host as usable instead of reporting `tracked_target_missing`.
-
-For safe local repairs, `doctor --fix` can recreate the SSH include file and,
-when a host plus cached active session are available, regenerate the SSH fragment.
-It does not create OCI sessions; use `ensure <host>` for that.
+Use `target reconcile` when a host already works through an active bastion
+session but is missing from the tracked target registry:
 
 ```bash
-bastion-session doctor vmordws02 --fix -o json
+bastion-session target reconcile vmordws02 --cached -o json
 ```
 
-`explain <host>` returns the same operator-oriented state without treating
-issues as command failure. It summarizes the SSH path, tracked target, cached
-and live session state, current bastion/context, and local include path.
+Use `ssh-config audit` before editing SSH config:
 
-`ssh-config audit <host>` scans `~/.ssh/config`, `~/.ssh/config.d/*`, and the
-configured bastion-session include path for matching `Host` blocks so competing
-aliases are visible before editing SSH config.
+```bash
+bastion-session ssh-config audit vmordws02 -o json
+```
 
-`status` and `doctor` report a warning when a cached/live session is within the
-near-expiry window. `session prune` removes only expired cached session state,
-and `session renew <host>` is an alias of the `ensure <host>` create/reuse path
-for operators who think in session lifecycle terms.
-
-## Agent Contract
-
-- Stable automation output is JSON. Agents should prefer `-o json` for supported
-  commands such as `connect`, `ensure`, and `session new`, and should not parse
-  human-readable output when JSON is available.
-- JSON keys are compatibility surface. Add fields when needed, but avoid
-  renaming or removing existing fields without a documented migration path.
-- Preferred local checks are `make fmt`, `make vet`, `make test`,
-  `make lint-workflows`, and `make validate-workflows`.
-- Releases are produced from semantic `v*` tags through GoReleaser. The
-  `auto-release` workflow may create the next tag from Conventional Commit
-  subjects on `main`, but it skips commits that modify workflow files.
+`status` and `doctor` warn when a cached or live session is within the
+near-expiry window. `session prune` removes expired cached session state.
+`session renew <host>` follows the same create/reuse path as `ensure <host>`.
 
 ## Context Scoping
 
-By default, bastion-session loads your current `oci-context` and scopes operations by it
-(profile, auth method, region, compartment).
+By default, `bastion-session` loads the current `oci-context` and scopes OCI
+operations by profile, auth method, region, and compartment.
 
-- Disable scoping for a command: `--no-context-scope`
-- Force global oci-context config: `--global`
-- Use explicit oci-context file: `--oci-context-config /path/to/config.yml`
+```bash
+bastion-session list --source scoped
+bastion-session --no-context-scope list
+bastion-session --global list
+bastion-session --oci-context-config /path/to/config.yml list
+```
 
 In TUI:
 
-- Scoped mode is default (banner shows active context).
-- Press `e` to escape to tracked bastions.
-- Press `s` to return to scoped bastions.
-- Press `r` to refresh list.
-- Press `Enter` to select a bastion ID.
+- scoped mode is default
+- `e` escapes to tracked bastions
+- `s` returns to scoped bastions
+- `r` refreshes
+- `Enter` selects a bastion ID
+
+## Agent Contract
+
+Stable automation output is JSON. Agents should prefer `-o json` for supported
+commands such as `connect`, `ensure`, `explain`, `paths`, `session new`, and
+`target` commands. Human-readable output is for operators, not parsers.
+
+JSON keys are compatibility surface. Add fields when needed, but avoid renaming
+or removing existing fields without a documented migration path.
 
 ## Background Services
 
-Service files are generated by CLI commands and are not vendored in this repository.
+Service files are generated by CLI commands and are not vendored in this
+repository.
 
-### systemd --user
-
-Generate and install with automation:
+Generate and install a macOS launchd service:
 
 ```bash
-./bastion-session service systemd install --interval 300
+bastion-session service launchd install --interval 300
 ```
 
-Generate only:
+Generate and install a systemd user service:
 
 ```bash
-./bastion-session service systemd generate --interval 300
+bastion-session service systemd install --interval 300
 ```
 
-Manual enable/start:
+Default launchd logs:
 
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now bastion-session
-systemctl --user status bastion-session
-```
-
-### launchd (macOS)
-
-Generate and install with automation:
-
-```bash
-./bastion-session service launchd install --interval 300
-```
-
-Generate only:
-
-```bash
-./bastion-session service launchd generate --interval 300
-```
-
-Manual load/start:
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.remote.bastion-session.plist 2>/dev/null || true
-launchctl load ~/Library/LaunchAgents/com.remote.bastion-session.plist
-launchctl start com.remote.bastion-session
-```
-
-Default logs from generated launchd plist:
-
-```bash
+```text
 ~/.bastion-session/watch.out.log
 ~/.bastion-session/watch.err.log
 ```
 
-## Release Automation
-
-- CI: `.github/workflows/ci.yml`
-- Alpha preview artifacts on PRs: `.github/workflows/prerelease-alpha.yml`
-- Tagged releases via GoReleaser: `.github/workflows/release.yml`
-- Automatic semantic tagging on `main`: `.github/workflows/auto-release.yml`
-
-Local tooling:
+## Development
 
 ```bash
+go build -o bastion-session ./cmd/bastion-session
 make fmt
 make vet
 make test
 make lint-workflows
 make validate-workflows
 ```
+
+## Release Automation
+
+- CI: `.github/workflows/ci.yml`
+- alpha preview artifacts on PRs: `.github/workflows/prerelease-alpha.yml`
+- tagged releases via GoReleaser: `.github/workflows/release.yml`
+- automatic semantic tagging on `main`: `.github/workflows/auto-release.yml`
+
+The legacy Python implementation has been removed. `bastion-session` is Go-only.

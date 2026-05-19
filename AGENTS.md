@@ -37,6 +37,14 @@
   `auto-release` workflow can create semantic tags from Conventional Commit
   subjects on `main` while skipping commits that modify workflows.
 
+## Demo Assets
+- The README terminal capture is generated from `docs/demo/bastion-session.tape` with VHS.
+- Keep the README focused on product usage; implementation details for regenerating the capture belong here.
+- Use fictional examples in demo assets, currently `my-vps-01`, `my-bastion`, `cloud-user`, and `10.0.1.25`.
+- After changing demo scripts or tapes, run:
+  - `vhs validate docs/demo/bastion-session.tape`
+  - `vhs docs/demo/bastion-session.tape`
+
 ## Commit & Pull Request Guidelines
 - Follow Conventional Commits (`feat`, `fix`, `chore`, `refactor`).
 - Keep commits atomic with imperative summaries.

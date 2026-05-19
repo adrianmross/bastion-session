@@ -5,6 +5,10 @@ working for private OCI compute instances.
 
 ![bastion-session terminal demo](docs/assets/bastion-session-demo.gif)
 
+The demo is generated from `docs/demo/bastion-session.tape` with
+[VHS](https://github.com/charmbracelet/vhs), so the README capture shows real
+terminal typing instead of a static mockup.
+
 `bastion-session` is the lower-level Go CLI that creates sessions, tracks
 compute targets, renders SSH config fragments, and explains what will happen
 before an operator connects.

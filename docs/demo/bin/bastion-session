@@ -5,11 +5,11 @@ case "${1:-}" in
   explain)
     cat <<'JSON'
 {
-  "host": "app-server-01",
+  "host": "my-vps-01",
   "ssh_config": {
     "hostname": "10.0.1.25",
     "user": "cloud-user",
-    "proxyjump": "dev-bastion"
+    "proxyjump": "my-bastion"
   },
   "session": {
     "lifecycle": "ACTIVE",
@@ -24,7 +24,7 @@ JSON
   "ok": true,
   "action": "reused_active_session",
   "target_private_ip": "10.0.1.25",
-  "ssh_host": "app-server-01"
+  "ssh_host": "my-vps-01"
 }
 JSON
     ;;
@@ -33,7 +33,7 @@ JSON
 {
   "ok": true,
   "include_path": "~/.ssh/config.d/bastion-session",
-  "matching_hosts": ["app-server-01"],
+  "matching_hosts": ["my-vps-01"],
   "issues": []
 }
 JSON

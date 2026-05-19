@@ -26,12 +26,12 @@ Enter
 Show
 
 Sleep 700ms
-Type "bastion-session explain vmordws02 -o json"
+Type "bastion-session explain app-server-01 -o json"
 Enter
 Sleep 1400ms
-Type "bastion-session session renew vmordws02 -o json"
+Type "bastion-session session renew app-server-01 -o json"
 Enter
 Sleep 1300ms
-Type "bastion-session ssh-config audit vmordws02 -o json"
+Type "bastion-session ssh-config audit app-server-01 -o json"
 Enter
 Sleep 1800ms

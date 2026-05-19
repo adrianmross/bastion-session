@@ -145,6 +145,10 @@ Doctor reports machine-readable `issues` and exits nonzero when it finds broken
 state. Exit code `2` indicates selection/target state, `3` indicates session
 state, and `4` indicates SSH configuration state.
 
+When a host is not in the tracked-target registry but an active cached/live
+session targets the same private IP as the effective SSH `HostName`, doctor
+treats the host as usable instead of reporting `tracked_target_missing`.
+
 For safe local repairs, `doctor --fix` can recreate the SSH include file and,
 when a host plus cached active session are available, regenerate the SSH fragment.
 It does not create OCI sessions; use `ensure <host>` for that.

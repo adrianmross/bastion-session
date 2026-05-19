@@ -216,8 +216,155 @@ func TestDoctorReportsExpiredSessionIssue(t *testing.T) {
 	}
 }
 
+func TestDoctorDoesNotRequireTrackedTargetWhenHostIsUsable(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	currentPath := filepath.Join(dir, "current.json")
+	includePath := filepath.Join(dir, "ssh", "config.d", "bastion-session")
+	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(includePath, []byte("Host test-bastion\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SaveSession(statePath, app.BastionSession{
+		ID:               "ocid1.bastionsession.oc1..s1",
+		BastionID:        "ocid1.bastion.oc1..b1",
+		TargetResourceID: "ocid1.instance.oc1..i1",
+		TargetPrivateIP:  "10.42.1.217",
+		LifecycleState:   "ACTIVE",
+		TimeExpires:      time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SaveCurrent(currentPath, app.CurrentBastion{
+		ID:         "ocid1.bastion.oc1..b1",
+		Name:       "b1",
+		Profile:    "DEFAULT",
+		Region:     "us-chicago-1",
+		Source:     "test",
+		SelectedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeSSH(t, binDir, `#!/bin/sh
+if [ "$1" = "-G" ] && [ "$2" = "vmordws02" ]; then
+  printf '%s\n' 'hostname 10.42.1.217' 'user opc' 'proxyjump test-bastion'
+  exit 0
+fi
+exit 2
+`)
+	t.Setenv("PATH", binDir)
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{
+		"--no-context-scope",
+		"--state-path", statePath,
+		"--current-path", currentPath,
+		"--ssh-include", includePath,
+		"doctor", "vmordws02", "--cached", "-o", "json",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("doctor: %v\n%s", err, out.String())
+	}
+
+	var report doctorReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("json output: %v\n%s", err, out.String())
+	}
+	if report.Target != nil {
+		t.Fatalf("expected target to remain untracked in report: %#v", report.Target)
+	}
+	for _, issue := range report.Issues {
+		if issue.Code == "tracked_target_missing" {
+			t.Fatalf("did not expect tracked_target_missing when host is usable: %#v", report.Issues)
+		}
+	}
+}
+
+func TestDoctorRequiresTrackedTargetWhenHostIsNotUsable(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	currentPath := filepath.Join(dir, "current.json")
+	includePath := filepath.Join(dir, "ssh", "config.d", "bastion-session")
+	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(includePath, []byte("Host test-bastion\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SaveSession(statePath, app.BastionSession{
+		ID:              "ocid1.bastionsession.oc1..s1",
+		TargetPrivateIP: "10.42.1.217",
+		LifecycleState:  "ACTIVE",
+		TimeExpires:     time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SaveCurrent(currentPath, app.CurrentBastion{
+		ID:         "ocid1.bastion.oc1..b1",
+		Name:       "b1",
+		Profile:    "DEFAULT",
+		Region:     "us-chicago-1",
+		Source:     "test",
+		SelectedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeSSH(t, binDir, `#!/bin/sh
+if [ "$1" = "-G" ] && [ "$2" = "vmordws02" ]; then
+  printf '%s\n' 'hostname 10.42.1.99' 'user opc' 'proxyjump test-bastion'
+  exit 0
+fi
+exit 2
+`)
+	t.Setenv("PATH", binDir)
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{
+		"--no-context-scope",
+		"--state-path", statePath,
+		"--current-path", currentPath,
+		"--ssh-include", includePath,
+		"doctor", "vmordws02", "--cached", "-o", "json",
+	})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected doctor error for untracked unusable host")
+	}
+	var report doctorReport
+	if jsonErr := json.Unmarshal(out.Bytes(), &report); jsonErr != nil {
+		t.Fatalf("json output: %v\n%s", jsonErr, out.String())
+	}
+	found := false
+	for _, issue := range report.Issues {
+		if issue.Code == "tracked_target_missing" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected tracked_target_missing issue: %#v", report.Issues)
+	}
+}
+
 func TestDoctorFixCreatesMissingSSHInclude(t *testing.T) {
 	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	currentPath := filepath.Join(dir, "current.json")
 	includePath := filepath.Join(dir, "ssh", "config.d", "bastion-session")
 	root := newRootCmd()
 	var out bytes.Buffer
@@ -225,6 +372,8 @@ func TestDoctorFixCreatesMissingSSHInclude(t *testing.T) {
 	root.SetErr(&out)
 	root.SetArgs([]string{
 		"--no-context-scope",
+		"--state-path", statePath,
+		"--current-path", currentPath,
 		"--ssh-include", includePath,
 		"doctor", "--fix", "-o", "json",
 	})

@@ -1,45 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+c_reset=$'\033[0m'
+c_key=$'\033[38;5;81m'
+c_string=$'\033[38;5;150m'
+c_bool=$'\033[38;5;221m'
+c_error=$'\033[38;5;203m'
+
+key() { printf '%b"%s"%b' "$c_key" "$1" "$c_reset"; }
+str() { printf '%b"%s"%b' "$c_string" "$1" "$c_reset"; }
+bool() { printf '%b%s%b' "$c_bool" "$1" "$c_reset"; }
+
 case "${1:-}" in
   explain)
-    cat <<'JSON'
-{
-  "host": "my-vps-01",
-  "ssh_config": {
-    "hostname": "10.0.1.25",
-    "user": "cloud-user",
-    "proxyjump": "my-bastion"
-  },
-  "session": {
-    "lifecycle": "ACTIVE",
-    "expires_in": "26m14s"
-  }
-}
-JSON
+    printf '{\n  '; key host; printf ': '; str my-vps-01; printf ',\n'
+    printf '  '; key ssh_config; printf ': {\n'
+    printf '    '; key hostname; printf ': '; str 10.0.1.25; printf ',\n'
+    printf '    '; key user; printf ': '; str cloud-user; printf ',\n'
+    printf '    '; key proxyjump; printf ': '; str my-bastion; printf '\n'
+    printf '  },\n'
+    printf '  '; key session; printf ': {\n'
+    printf '    '; key lifecycle; printf ': '; str ACTIVE; printf ',\n'
+    printf '    '; key expires_in; printf ': '; str 26m14s; printf '\n'
+    printf '  }\n}\n'
     ;;
   session)
-    cat <<'JSON'
-{
-  "ok": true,
-  "action": "reused_active_session",
-  "target_private_ip": "10.0.1.25",
-  "ssh_host": "my-vps-01"
-}
-JSON
+    printf '{\n  '; key ok; printf ': '; bool true; printf ',\n'
+    printf '  '; key action; printf ': '; str reused_active_session; printf ',\n'
+    printf '  '; key target_private_ip; printf ': '; str 10.0.1.25; printf ',\n'
+    printf '  '; key ssh_host; printf ': '; str my-vps-01; printf '\n}\n'
     ;;
   ssh-config)
-    cat <<'JSON'
-{
-  "ok": true,
-  "include_path": "~/.ssh/config.d/bastion-session",
-  "matching_hosts": ["my-vps-01"],
-  "issues": []
-}
-JSON
+    printf '{\n  '; key ok; printf ': '; bool true; printf ',\n'
+    printf '  '; key include_path; printf ': '; str '~/.ssh/config.d/bastion-session'; printf ',\n'
+    printf '  '; key matching_hosts; printf ': ['; str my-vps-01; printf '],\n'
+    printf '  '; key issues; printf ': []\n}\n'
     ;;
   *)
-    echo "bastion-session demo shim: unsupported command" >&2
+    printf '%bbastion-session demo shim: unsupported command%b\n' "$c_error" "$c_reset" >&2
     exit 2
     ;;
 esac

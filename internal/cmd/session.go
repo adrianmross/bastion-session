@@ -67,6 +67,7 @@ func newSessionNewCmd(opts *rootOptions) *cobra.Command {
 	var privateIP string
 	var keyOverride string
 	var output string
+	var sessionTTLText string
 	cmd := &cobra.Command{
 		Use:   "new [bastion-id-or-ref]",
 		Short: "Create a new bastion session (explicit create/renew path)",
@@ -74,6 +75,10 @@ func newSessionNewCmd(opts *rootOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if keyOverride != "" {
 				opts.cfg.SSHPublicKey = keyOverride
+			}
+			sessionTTL, err := parseSessionTTL(sessionTTLText)
+			if err != nil {
+				return err
 			}
 			if strings.TrimSpace(bastionID) == "" && len(args) == 1 {
 				bastionID = strings.TrimSpace(args[0])
@@ -90,6 +95,7 @@ func newSessionNewCmd(opts *rootOptions) *cobra.Command {
 				BastionID:  bid,
 				InstanceID: instanceID,
 				PrivateIP:  privateIP,
+				SessionTTL: sessionTTL,
 			})
 			if err != nil {
 				return err
@@ -124,6 +130,7 @@ func newSessionNewCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&privateIP, "private-ip", "", "Target private IP override (otherwise Terraform outputs)")
 	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override for this session creation")
 	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
+	cmd.Flags().StringVar(&sessionTTLText, "session-ttl", "", "Requested TTL for newly created sessions as a duration or seconds (e.g. 3h, 10800)")
 	return cmd
 }
 
@@ -319,18 +326,24 @@ func newSessionRenewCmd(opts *rootOptions) *cobra.Command {
 	var keyOverride string
 	var targetIdentityFile string
 	var output string
+	var sessionTTLText string
 	var waitTimeout time.Duration
 	cmd := &cobra.Command{
 		Use:   "renew <ssh-host>",
 		Short: "Ensure/refresh an active session for a tracked SSH host",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sessionTTL, err := parseSessionTTL(sessionTTLText)
+			if err != nil {
+				return err
+			}
 			result, err := runEnsureHost(&opts.cfg, args[0], ensureRunOptions{
 				BastionID:          bastionID,
 				InstanceID:         instanceID,
 				PrivateIP:          privateIP,
 				KeyOverride:        keyOverride,
 				TargetIdentityFile: targetIdentityFile,
+				SessionTTL:         sessionTTL,
 				WaitTimeout:        waitTimeout,
 				TargetUserExplicit: opts.targetUser != "",
 			})
@@ -359,6 +372,7 @@ func newSessionRenewCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&targetIdentityFile, "target-identity-file", "", "SSH private key for the target VM host alias")
 	cmd.Flags().StringVar(&targetIdentityFile, "identity-file", "", "SSH private key for the target VM host alias")
 	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
+	cmd.Flags().StringVar(&sessionTTLText, "session-ttl", "", "Requested TTL for newly created sessions as a duration or seconds (e.g. 3h, 10800)")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", app.ActiveWaitTimeout, "How long to wait for a newly created session to reach ACTIVE (e.g. 2m, 10m)")
 	return cmd
 }

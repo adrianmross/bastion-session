@@ -22,6 +22,7 @@ type RefreshOptions struct {
 	BastionID   string
 	InstanceID  string
 	PrivateIP   string
+	SessionTTL  time.Duration
 	WaitTimeout time.Duration
 	OnCreated   func(BastionSession)
 	OnReused    func(BastionSession)
@@ -94,6 +95,7 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		PrivateIP:     metadata.PrivateIP,
 		TargetUser:    cfg.TargetUser,
 		PublicKeyPath: pub,
+		SessionTTL:    opts.SessionTTL,
 	})
 	if err != nil {
 		return BastionSession{}, err

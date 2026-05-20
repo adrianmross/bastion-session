@@ -19,6 +19,7 @@ type TargetDetails struct {
 	PrivateIP     string
 	TargetUser    string
 	PublicKeyPath string
+	SessionTTL    time.Duration
 }
 
 type BastionInfo struct {
@@ -89,7 +90,7 @@ func (c OCIClient) run(args ...string) ([]byte, error) {
 }
 
 func (c OCIClient) CreateSession(target TargetDetails) (BastionSession, error) {
-	out, err := c.run(
+	args := []string{
 		"bastion", "session", "create-managed-ssh",
 		"--bastion-id", target.BastionID,
 		"--target-resource-id", target.InstanceID,
@@ -98,7 +99,11 @@ func (c OCIClient) CreateSession(target TargetDetails) (BastionSession, error) {
 		"--ssh-public-key-file", target.PublicKeyPath,
 		"--query", "data",
 		"--raw-output",
-	)
+	}
+	if target.SessionTTL > 0 {
+		args = append(args, "--session-ttl-in-seconds", strconv.FormatInt(int64(target.SessionTTL/time.Second), 10))
+	}
+	out, err := c.run(args...)
 	if err != nil {
 		return BastionSession{}, err
 	}

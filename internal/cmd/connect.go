@@ -31,6 +31,7 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 	var keyOverride string
 	var output string
 	var verbose bool
+	var sessionTTLText string
 	var waitTimeout time.Duration
 	cmd := &cobra.Command{
 		Use:   "connect [bastion-ref-or-ocid]",
@@ -39,6 +40,10 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if keyOverride != "" {
 				opts.cfg.SSHPublicKey = keyOverride
+			}
+			sessionTTL, err := parseSessionTTL(sessionTTLText)
+			if err != nil {
+				return err
 			}
 			structuredOutput := strings.EqualFold(output, "json") || strings.EqualFold(output, "yaml") || strings.EqualFold(output, "yml")
 			if len(args) == 1 {
@@ -103,6 +108,7 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 					BastionID:   bid,
 					InstanceID:  instanceID,
 					PrivateIP:   privateIP,
+					SessionTTL:  sessionTTL,
 					WaitTimeout: waitTimeout,
 					OnCreated: func(s app.BastionSession) {
 						if verbose && !structuredOutput {
@@ -186,6 +192,7 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&keyOverride, "key", "", "SSH public key path override when creating a new session")
 	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Show session creation and lifecycle polling details")
+	cmd.Flags().StringVar(&sessionTTLText, "session-ttl", "", "Requested TTL for newly created sessions as a duration or seconds (e.g. 3h, 10800)")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", app.ActiveWaitTimeout, "How long to wait for a newly created session to reach ACTIVE (e.g. 2m, 10m)")
 	return cmd
 }

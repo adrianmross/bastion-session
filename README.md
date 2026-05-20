@@ -85,6 +85,17 @@ Create or reuse the session and write the VM-facing SSH host:
 bastion-session ensure my-vps-01
 ```
 
+Request a longer TTL for sessions that need to be created:
+
+```bash
+bastion-session ensure my-vps-01 --session-ttl 3h
+bastion-session session new my-bastion --session-ttl 10800
+```
+
+`--session-ttl` accepts Go-style durations or seconds and is passed to OCI as
+`--session-ttl-in-seconds`. Existing healthy sessions are still reused; the TTL
+only applies when a new managed SSH session is created.
+
 Connect to the compute host:
 
 ```bash

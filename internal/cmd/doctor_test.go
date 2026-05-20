@@ -221,6 +221,7 @@ func TestDoctorDoesNotRequireTrackedTargetWhenHostIsUsable(t *testing.T) {
 	statePath := filepath.Join(dir, "state.json")
 	currentPath := filepath.Join(dir, "current.json")
 	includePath := filepath.Join(dir, "ssh", "config.d", "bastion-session")
+	trackedTargetsPath := filepath.Join(dir, "tracked-targets.json")
 	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -269,6 +270,7 @@ exit 2
 		"--state-path", statePath,
 		"--current-path", currentPath,
 		"--ssh-include", includePath,
+		"--tracked-targets-path", trackedTargetsPath,
 		"doctor", "vmordws02", "--cached", "-o", "json",
 	})
 	if err := root.Execute(); err != nil {
@@ -294,6 +296,7 @@ func TestDoctorRequiresTrackedTargetWhenHostIsNotUsable(t *testing.T) {
 	statePath := filepath.Join(dir, "state.json")
 	currentPath := filepath.Join(dir, "current.json")
 	includePath := filepath.Join(dir, "ssh", "config.d", "bastion-session")
+	trackedTargetsPath := filepath.Join(dir, "tracked-targets.json")
 	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -340,6 +343,7 @@ exit 2
 		"--state-path", statePath,
 		"--current-path", currentPath,
 		"--ssh-include", includePath,
+		"--tracked-targets-path", trackedTargetsPath,
 		"doctor", "vmordws02", "--cached", "-o", "json",
 	})
 	err := root.Execute()

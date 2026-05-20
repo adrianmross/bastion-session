@@ -30,6 +30,7 @@ type ensureRunOptions struct {
 	PrivateIP          string
 	KeyOverride        string
 	TargetIdentityFile string
+	SessionTTL         time.Duration
 	WaitTimeout        time.Duration
 	TargetUserExplicit bool
 }
@@ -41,6 +42,7 @@ func newEnsureCmd(opts *rootOptions) *cobra.Command {
 	var keyOverride string
 	var targetIdentityFile string
 	var output string
+	var sessionTTLText string
 	var waitTimeout time.Duration
 	cmd := &cobra.Command{
 		Use:   "ensure <ssh-host>",
@@ -48,12 +50,17 @@ func newEnsureCmd(opts *rootOptions) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sshHost := strings.TrimSpace(args[0])
+			sessionTTL, err := parseSessionTTL(sessionTTLText)
+			if err != nil {
+				return err
+			}
 			result, err := runEnsureHost(&opts.cfg, sshHost, ensureRunOptions{
 				BastionID:          bastionID,
 				InstanceID:         instanceID,
 				PrivateIP:          privateIP,
 				KeyOverride:        keyOverride,
 				TargetIdentityFile: targetIdentityFile,
+				SessionTTL:         sessionTTL,
 				WaitTimeout:        waitTimeout,
 				TargetUserExplicit: opts.targetUser != "",
 			})
@@ -84,6 +91,7 @@ func newEnsureCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&targetIdentityFile, "target-identity-file", "", "SSH private key for the target VM host alias")
 	cmd.Flags().StringVar(&targetIdentityFile, "identity-file", "", "SSH private key for the target VM host alias")
 	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json|yaml")
+	cmd.Flags().StringVar(&sessionTTLText, "session-ttl", "", "Requested TTL for newly created sessions as a duration or seconds (e.g. 3h, 10800)")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", app.ActiveWaitTimeout, "How long to wait for a newly created session to reach ACTIVE (e.g. 2m, 10m)")
 	return cmd
 }
@@ -118,6 +126,7 @@ func runEnsureHost(cfg *app.Config, sshHost string, opts ensureRunOptions) (ensu
 		BastionID:   bid,
 		InstanceID:  instanceID,
 		PrivateIP:   privateIP,
+		SessionTTL:  opts.SessionTTL,
 		WaitTimeout: opts.WaitTimeout,
 	})
 	if err != nil {

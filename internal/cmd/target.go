@@ -258,7 +258,7 @@ func usableSessionForReconcile(cfg app.Config, live bool) (app.BastionSession, s
 		return app.BastionSession{}, "", fmt.Errorf("no cached session available")
 	}
 	if live && strings.TrimSpace(cached.ID) != "" {
-		client := app.OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
+		client := app.OCIClientFromConfig(cfg)
 		if s, err := client.GetSession(cached.ID); err == nil && sessionUsableForReconcile(s) {
 			_ = app.SaveSession(cfg.SessionStatePath, s)
 			return s, "live", nil

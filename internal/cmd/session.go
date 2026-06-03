@@ -149,7 +149,7 @@ func newSessionListCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client := app.OCIClient{Profile: opts.cfg.Profile, Region: opts.cfg.Region, AuthMethod: opts.cfg.AuthMethod}
+			client := app.OCIClientFromConfig(opts.cfg)
 			sessions, err := client.ListSessions(bid)
 			if err != nil {
 				return err
@@ -203,7 +203,7 @@ func newSessionUseCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client := app.OCIClient{Profile: opts.cfg.Profile, Region: opts.cfg.Region, AuthMethod: opts.cfg.AuthMethod}
+			client := app.OCIClientFromConfig(opts.cfg)
 			sessionID, err := resolveSessionIDToken(client, bid, token)
 			if err != nil {
 				return err
@@ -248,7 +248,7 @@ func newSessionWaitCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client := app.OCIClient{Profile: opts.cfg.Profile, Region: opts.cfg.Region, AuthMethod: opts.cfg.AuthMethod}
+			client := app.OCIClientFromConfig(opts.cfg)
 			sessionID, err := resolveSessionIDToken(client, bid, token)
 			if err != nil {
 				return err

@@ -188,6 +188,17 @@ bastion-session doctor my-vps-01 -o json
 bastion-session doctor my-vps-01 --cached -o json
 ```
 
+When `oci-context` is installed on macOS with its Hammerspoon notification
+integration, `bastion-session` triggers a best-effort reauth notification if an
+OCI Bastion refresh fails because security-token auth expired. The terminal
+error also includes the direct recovery command:
+
+```bash
+oci session authenticate --profile-name <profile> --region <region>
+```
+
+Disable the notification hook with `BASTION_SESSION_AUTH_NOTIFY=0`.
+
 Use `target reconcile` when a host already works through an active bastion
 session but is missing from the tracked target registry:
 

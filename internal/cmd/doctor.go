@@ -193,7 +193,7 @@ func buildDoctorReport(cfg app.Config, host string, opts doctorOptions) doctorRe
 		cachedSession = cached
 		report.Session.Cached = doctorSessionFromApp(*cached)
 		if opts.Live {
-			client := app.OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
+			client := app.OCIClientFromConfig(cfg)
 			if live, err := client.GetSession(cached.ID); err != nil {
 				report.Session.LiveError = err.Error()
 			} else {

@@ -73,7 +73,7 @@ func newConnectCmd(opts *rootOptions) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				client := app.OCIClient{Profile: opts.cfg.Profile, Region: opts.cfg.Region, AuthMethod: opts.cfg.AuthMethod}
+				client := app.OCIClientFromConfig(opts.cfg)
 				sessionID := strings.TrimSpace(sessionToken)
 				if len(sessionID) <= 8 {
 					sessions, err := client.ListSessions(bid)

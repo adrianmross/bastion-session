@@ -31,8 +31,16 @@ type RefreshOptions struct {
 
 const MinReusableSessionTTL = 2 * time.Minute
 
-func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, error) {
+func OCIClientFromConfig(cfg Config) OCIClient {
 	client := OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
+	if cfg.ScopedContext != nil {
+		client.ContextName = cfg.ScopedContext.Name
+	}
+	return client
+}
+
+func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, error) {
+	client := OCIClientFromConfig(cfg)
 	metadata, err := resolveTargetMetadata(cfg, client, opts)
 	if err != nil {
 		return BastionSession{}, err
@@ -356,7 +364,7 @@ func SessionStatus(cfg Config) (Status, error) {
 	if cached == nil {
 		return Status{}, fmt.Errorf("no cached session. Run refresh first")
 	}
-	client := OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
+	client := OCIClientFromConfig(cfg)
 	s := *cached
 	if live, err := client.GetSession(cached.ID); err == nil {
 		s = live
@@ -382,7 +390,7 @@ func SessionStatus(cfg Config) (Status, error) {
 }
 
 func ListScopedBastions(cfg Config) ([]BastionInfo, error) {
-	client := OCIClient{Profile: cfg.Profile, Region: cfg.Region, AuthMethod: cfg.AuthMethod}
+	client := OCIClientFromConfig(cfg)
 	compartment := ""
 	if cfg.ScopedContext != nil {
 		compartment = cfg.ScopedContext.CompartmentOCID

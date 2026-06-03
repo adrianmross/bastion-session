@@ -79,7 +79,7 @@ func newTrackPruneCmd(opts *rootOptions) *cobra.Command {
 				if auth == "" && b.Profile == opts.cfg.Profile && b.Region == opts.cfg.Region {
 					auth = opts.cfg.AuthMethod
 				}
-				client := app.OCIClient{Profile: b.Profile, Region: b.Region, AuthMethod: auth}
+				client := app.OCIClient{Profile: b.Profile, Region: b.Region, AuthMethod: auth, ContextName: b.ContextName}
 				live, err := client.GetBastion(b.ID)
 				if err != nil {
 					msg := strings.ToLower(err.Error())

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -37,9 +38,10 @@ type BastionInfo struct {
 }
 
 type OCIClient struct {
-	Profile    string
-	Region     string
-	AuthMethod string
+	Profile     string
+	Region      string
+	AuthMethod  string
+	ContextName string
 }
 
 type SessionInfo struct {
@@ -72,7 +74,9 @@ func (c OCIClient) run(args ...string) ([]byte, error) {
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			if strings.EqualFold(strings.TrimSpace(c.AuthMethod), "security_token") {
-				return nil, fmt.Errorf("timed out waiting for OCI CLI response; run `oci session authenticate --profile %s` to refresh the token", c.Profile)
+				reason := "OCI CLI timed out while using security_token authentication"
+				c.notifyAuthFailure(reason)
+				return nil, fmt.Errorf("timed out waiting for OCI CLI response; run `%s` to refresh the token", c.reauthCommand())
 			}
 			return nil, fmt.Errorf("timed out waiting for OCI CLI response (profile=%s region=%s)", c.Profile, c.Region)
 		}
@@ -82,11 +86,49 @@ func (c OCIClient) run(args ...string) ([]byte, error) {
 		}
 		msg := strings.ToLower(stderrText)
 		if strings.Contains(msg, "security token") || strings.Contains(msg, "security_token") || strings.Contains(msg, "security-token") {
-			return nil, fmt.Errorf("OCI CLI reported a security token authentication failure. Re-authenticate with `oci session authenticate --profile %s`", c.Profile)
+			reason := "OCI CLI reported a security token authentication failure"
+			c.notifyAuthFailure(reason)
+			return nil, fmt.Errorf("%s. Re-authenticate with `%s`", reason, c.reauthCommand())
 		}
 		return nil, fmt.Errorf("oci command failed: %w: %s", err, stderrText)
 	}
 	return stdout.Bytes(), nil
+}
+
+func (c OCIClient) reauthCommand() string {
+	profile := strings.TrimSpace(c.Profile)
+	if profile == "" {
+		profile = "DEFAULT"
+	}
+	parts := []string{"oci", "session", "authenticate", "--profile-name", profile}
+	if region := strings.TrimSpace(c.Region); region != "" {
+		parts = append(parts, "--region", region)
+	}
+	return strings.Join(parts, " ")
+}
+
+func (c OCIClient) notifyAuthFailure(reason string) {
+	if os.Getenv("BASTION_SESSION_AUTH_NOTIFY") == "0" {
+		return
+	}
+	profile := strings.TrimSpace(c.Profile)
+	if profile == "" {
+		profile = "DEFAULT"
+	}
+	args := []string{"auth", "notify", "--profile", profile, "--reason", strings.TrimSpace(reason), "--native-notify"}
+	if contextName := strings.TrimSpace(c.ContextName); contextName != "" {
+		args = append(args, "--context", contextName)
+	}
+	if region := strings.TrimSpace(c.Region); region != "" {
+		args = append(args, "--region", region)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "oci-context", args...)
+	var sink bytes.Buffer
+	cmd.Stdout = &sink
+	cmd.Stderr = &sink
+	_ = cmd.Run()
 }
 
 func (c OCIClient) CreateSession(target TargetDetails) (BastionSession, error) {

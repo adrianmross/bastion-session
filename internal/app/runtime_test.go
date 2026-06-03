@@ -158,3 +158,75 @@ func TestUpdateSSHFragmentPreservesTargetAliasesAcrossSessionRefresh(t *testing.
 		t.Fatalf("old session ID should not remain in bastion block:\n%s", got)
 	}
 }
+
+func TestUpdateSSHFragmentForHostsWritesMultipleHosts(t *testing.T) {
+	dir := t.TempDir()
+	key := filepath.Join(dir, "id_ed25519")
+	if err := os.WriteFile(key, []byte("PRIVATE"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.d", "bastion-session")
+	existing := strings.Join([]string{
+		"# Managed by bastion-session CLI",
+		"Host stale-bastion",
+		"  HostName host.bastion.us-chicago-1.oci.oraclecloud.com",
+		"  User ocid1.session.oc1..stale",
+		"",
+		"Host one-bastion",
+		"  HostName host.bastion.us-chicago-1.oci.oraclecloud.com",
+		"  User ocid1.session.oc1..old",
+		"",
+		"Host vmordws02",
+		"  HostName 10.42.1.217",
+		"  User opc",
+		"  ProxyJump one-bastion",
+		"",
+	}, "\n")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(existing), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := UpdateSSHFragmentForHosts(path, []SSHHostEntry{
+		{
+			Alias:         "one-bastion",
+			Region:        "us-phoenix-1",
+			SessionID:     "ocid1.session.oc1..one",
+			SSHPrivateKey: key,
+		},
+		{
+			Alias:        "two-bastion",
+			Region:       "us-ashburn-1",
+			SessionID:    "ocid1.session.oc1..two",
+			SSHPublicKey: filepath.Join(dir, "missing.pub"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateSSHFragmentForHosts: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	content := string(data)
+	for _, want := range []string{
+		"Host one-bastion",
+		"HostName host.bastion.us-phoenix-1.oci.oraclecloud.com",
+		"User ocid1.session.oc1..one",
+		"IdentityFile " + key,
+		"Host two-bastion",
+		"HostName host.bastion.us-ashburn-1.oci.oraclecloud.com",
+		"User ocid1.session.oc1..two",
+		"Host vmordws02",
+		"HostName 10.42.1.217",
+		"ProxyJump one-bastion",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("expected %q in SSH fragment:\n%s", want, content)
+		}
+	}
+	if strings.Contains(content, "stale-bastion") || strings.Contains(content, "ocid1.session.oc1..old") {
+		t.Fatalf("stale bastion host should not be preserved:\n%s", content)
+	}
+}

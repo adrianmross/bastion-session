@@ -85,6 +85,12 @@ Create or reuse the session and write the VM-facing SSH host:
 bastion-session ensure my-vps-01
 ```
 
+Keep tracked compute target sessions warm:
+
+```bash
+bastion-session watch --source tracked --max-targets 20
+```
+
 Request a longer TTL for sessions that need to be created:
 
 ```bash

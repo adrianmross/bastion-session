@@ -18,6 +18,10 @@ type TrackedTarget struct {
 	IdentityFile         string    `json:"identity_file,omitempty" yaml:"identity_file,omitempty"`
 	BastionID            string    `json:"bastion_id,omitempty" yaml:"bastion_id,omitempty"`
 	TerraformOutputsPath string    `json:"terraform_outputs,omitempty" yaml:"terraform_outputs,omitempty"`
+	Profile              string    `json:"profile,omitempty" yaml:"profile,omitempty"`
+	Region               string    `json:"region,omitempty" yaml:"region,omitempty"`
+	AuthMethod           string    `json:"auth_method,omitempty" yaml:"auth_method,omitempty"`
+	SSHPublicKey         string    `json:"ssh_public_key,omitempty" yaml:"ssh_public_key,omitempty"`
 	LastSeenAt           time.Time `json:"last_seen_at" yaml:"last_seen_at"`
 }
 
@@ -145,6 +149,18 @@ func mergeTrackedTarget(cur, next TrackedTarget) TrackedTarget {
 	}
 	if next.TerraformOutputsPath != "" {
 		cur.TerraformOutputsPath = next.TerraformOutputsPath
+	}
+	if next.Profile != "" {
+		cur.Profile = next.Profile
+	}
+	if next.Region != "" {
+		cur.Region = next.Region
+	}
+	if next.AuthMethod != "" {
+		cur.AuthMethod = next.AuthMethod
+	}
+	if next.SSHPublicKey != "" {
+		cur.SSHPublicKey = next.SSHPublicKey
 	}
 	if !next.LastSeenAt.IsZero() {
 		cur.LastSeenAt = next.LastSeenAt

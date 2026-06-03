@@ -34,6 +34,15 @@ type TargetSSHHost struct {
 	ProxyJump    string
 }
 
+type SSHHostEntry struct {
+	Alias         string
+	Profile       string
+	Region        string
+	SessionID     string
+	SSHPublicKey  string
+	SSHPrivateKey string
+}
+
 var publicKeyEnvVars = []string{
 	"SSH_PUBLIC_KEY",
 	"TF_VAR_bastion_ssh_public_key_path",
@@ -211,13 +220,6 @@ func UpdateSSHFragment(cfg Config, sessionID string) error {
 
 func UpdateSSHFragmentWithTarget(cfg Config, sessionID string, target TargetSSHHost) error {
 	bastionAlias := cfg.Profile + "-bastion"
-	privateKey := cfg.SSHPrivateKey
-	if privateKey == "" && strings.HasSuffix(cfg.SSHPublicKey, ".pub") {
-		candidate := strings.TrimSuffix(cfg.SSHPublicKey, ".pub")
-		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
-			privateKey = candidate
-		}
-	}
 	lines := []string{
 		"# Managed by bastion-session CLI",
 		fmt.Sprintf("Host %s", bastionAlias),
@@ -225,6 +227,7 @@ func UpdateSSHFragmentWithTarget(cfg Config, sessionID string, target TargetSSHH
 		"  Port 22",
 		fmt.Sprintf("  User %s", sessionID),
 	}
+	privateKey := resolvePrivateKey(cfg.SSHPrivateKey, cfg.SSHPublicKey)
 	if privateKey != "" {
 		lines = append(lines, fmt.Sprintf("  IdentityFile %s", privateKey))
 	}
@@ -273,6 +276,106 @@ func UpdateSSHFragmentWithTarget(cfg Config, sessionID string, target TargetSSHH
 		return err
 	}
 	return os.Rename(tmp, cfg.SSHIncludePath)
+}
+
+func UpdateSSHFragmentForHosts(path string, hosts []SSHHostEntry) error {
+	lines := []string{"# Managed by bastion-session CLI"}
+	generatedAliases := map[string]bool{}
+	for _, host := range hosts {
+		alias := strings.TrimSpace(host.Alias)
+		if alias == "" || strings.TrimSpace(host.Region) == "" || strings.TrimSpace(host.SessionID) == "" {
+			continue
+		}
+		generatedAliases[alias] = true
+		privateKey := resolvePrivateKey(host.SSHPrivateKey, host.SSHPublicKey)
+		lines = append(lines,
+			"",
+			fmt.Sprintf("Host %s", alias),
+			fmt.Sprintf("  HostName host.bastion.%s.oci.oraclecloud.com", host.Region),
+			"  Port 22",
+			fmt.Sprintf("  User %s", host.SessionID),
+		)
+		if privateKey != "" {
+			lines = append(lines, fmt.Sprintf("  IdentityFile %s", privateKey))
+		}
+		lines = append(lines,
+			"  IdentitiesOnly yes",
+			"  IdentityAgent none",
+		)
+	}
+	for _, block := range preservedNonBastionSSHBlocks(path, generatedAliases) {
+		lines = append(lines, "")
+		lines = append(lines, block...)
+	}
+	content := strings.Join(lines, "\n") + "\n"
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func preservedNonBastionSSHBlocks(includePath string, generatedAliases map[string]bool) [][]string {
+	data, err := os.ReadFile(includePath)
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	var blocks [][]string
+	var current []string
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		hostLine := strings.TrimSpace(current[0])
+		fields := strings.Fields(hostLine)
+		if len(fields) < 2 || !strings.EqualFold(fields[0], "Host") {
+			current = nil
+			return
+		}
+		for _, alias := range fields[1:] {
+			if generatedAliases[alias] {
+				current = nil
+				return
+			}
+		}
+		for _, line := range current[1:] {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "hostname host.bastion.") {
+				current = nil
+				return
+			}
+		}
+		blocks = append(blocks, current)
+		current = nil
+	}
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "Host ") {
+			flush()
+			current = []string{line}
+			continue
+		}
+		if current != nil && strings.TrimSpace(line) != "" {
+			current = append(current, line)
+		}
+	}
+	flush()
+	return blocks
+}
+
+func resolvePrivateKey(explicit, public string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if strings.HasSuffix(public, ".pub") {
+		candidate := strings.TrimSuffix(public, ".pub")
+		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func preservedTargetSSHBlocks(includePath, bastionAlias, replacedAlias string) [][]string {

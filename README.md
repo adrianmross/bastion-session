@@ -99,7 +99,7 @@ bastion-session session new my-bastion --session-ttl 10800
 ```
 
 `--session-ttl` accepts Go-style durations or seconds and is passed to OCI as
-`--session-ttl-in-seconds`. Existing healthy sessions are still reused; the TTL
+`--session-ttl`. Existing healthy sessions are still reused; the TTL
 only applies when a new managed SSH session is created.
 
 Connect to the compute host:
@@ -253,13 +253,13 @@ repository.
 Generate and install a macOS launchd service:
 
 ```bash
-bastion-session service launchd install --interval 300
+bastion-session service launchd install --interval 300 --session-ttl 24h
 ```
 
 Generate and install a systemd user service:
 
 ```bash
-bastion-session service systemd install --interval 300
+bastion-session service systemd install --interval 300 --session-ttl 24h
 ```
 
 Default launchd logs:

@@ -13,6 +13,11 @@ import (
 )
 
 const defaultWatchMaxTargets = 20
+const defaultWatchSessionTTL = 24 * time.Hour
+
+func defaultWatchSessionTTLText() string {
+	return defaultWatchSessionTTL.String()
+}
 
 type watchTarget struct {
 	Label      string
@@ -34,10 +39,15 @@ func newWatchCmd(opts *rootOptions) *cobra.Command {
 	var interval int
 	var source string
 	var maxTargets int
+	var sessionTTLText string
 	cmd := &cobra.Command{
 		Use:   "watch",
 		Short: "Continuously refresh bastion session",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			sessionTTL, err := parseSessionTTL(sessionTTLText)
+			if err != nil {
+				return err
+			}
 			var explicit time.Duration
 			if interval > 0 {
 				explicit = time.Duration(interval) * time.Second
@@ -47,7 +57,7 @@ func newWatchCmd(opts *rootOptions) *cobra.Command {
 				sleepFor = explicit
 			}
 			for {
-				results, err := runWatchIteration(opts.cfg, source, maxTargets, app.RefreshSessionWithTarget, os.Stdout, os.Stderr)
+				results, err := runWatchIteration(opts.cfg, source, maxTargets, sessionTTL, app.RefreshSessionWithTarget, os.Stdout, os.Stderr)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Watch refresh failed: %v\n", err)
 					sleepFor = app.DefaultWatchInterval
@@ -65,10 +75,11 @@ func newWatchCmd(opts *rootOptions) *cobra.Command {
 	cmd.Flags().IntVarP(&interval, "interval", "i", 0, "Refresh interval in seconds")
 	cmd.Flags().StringVar(&source, "source", "current", "Watch source: current, tracked, or all")
 	cmd.Flags().IntVar(&maxTargets, "max-targets", defaultWatchMaxTargets, "Maximum tracked targets to refresh per interval")
+	cmd.Flags().StringVar(&sessionTTLText, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions as a duration or seconds")
 	return cmd
 }
 
-func runWatchIteration(base app.Config, source string, maxTargets int, refresh watchRefresher, stdout, stderr io.Writer) ([]watchRefreshResult, error) {
+func runWatchIteration(base app.Config, source string, maxTargets int, sessionTTL time.Duration, refresh watchRefresher, stdout, stderr io.Writer) ([]watchRefreshResult, error) {
 	targets, err := loadWatchTargets(base, source, maxTargets)
 	if err != nil {
 		return nil, err
@@ -86,6 +97,7 @@ func runWatchIteration(base app.Config, source string, maxTargets int, refresh w
 			BastionID:  target.BastionID,
 			InstanceID: target.InstanceID,
 			PrivateIP:  target.PrivateIP,
+			SessionTTL: sessionTTL,
 		})
 		if err != nil {
 			failures++

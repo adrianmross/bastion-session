@@ -98,9 +98,13 @@ func TestRunWatchIterationTrackedLogsFailuresAndWritesSuccessfulHosts(t *testing
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	results, err := runWatchIteration(base, "tracked", 10, func(_ app.Config, opts app.RefreshOptions) (app.BastionSession, error) {
+	sessionTTL := 24 * time.Hour
+	results, err := runWatchIteration(base, "tracked", 10, sessionTTL, func(_ app.Config, opts app.RefreshOptions) (app.BastionSession, error) {
 		if opts.BastionID == "ocid1.bastion.oc1..ok" && (opts.InstanceID != "ocid1.instance.oc1..ok" || opts.PrivateIP != "10.0.0.20") {
 			t.Fatalf("refresh missing target details: %#v", opts)
+		}
+		if opts.SessionTTL != sessionTTL {
+			t.Fatalf("refresh missing session TTL: %#v", opts)
 		}
 		if opts.BastionID == "ocid1.bastion.oc1..bad" {
 			return app.BastionSession{}, errors.New("OCI CLI reported a security token authentication failure")

@@ -49,6 +49,9 @@ func applyCurrentSelectionIdentity(cfg *app.Config, cur *app.CurrentBastion) {
 	if v := strings.TrimSpace(cur.SSHPublicKey); v != "" {
 		cfg.SSHPublicKey = v
 	}
+	if v := strings.TrimSpace(cur.ContextName); v != "" {
+		cfg.OCIContextName = v
+	}
 }
 
 func requireBastionID(current *app.CurrentBastion, explicit string) (string, error) {

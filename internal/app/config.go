@@ -30,6 +30,7 @@ type Config struct {
 	OCIContextConfigPath string
 	UseGlobalOCIContext  bool
 	ContextScopeEnabled  bool
+	OCIContextName       string
 	ScopedContext        *ContextRef
 }
 
@@ -114,6 +115,7 @@ func (c *Config) ApplyContextScope(ctx *ContextRef) {
 		return
 	}
 	c.ScopedContext = ctx
+	c.OCIContextName = ctx.Name
 	if c.Profile == "" || c.Profile == DefaultProfile {
 		if ctx.Profile != "" {
 			c.Profile = ctx.Profile

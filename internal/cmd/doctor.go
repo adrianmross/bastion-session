@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -280,12 +281,26 @@ func sessionExpired(s app.BastionSession) bool {
 }
 
 func ensureDoctorSSHInclude(path string) error {
-	if err := app.EnsureSSHInclude(path); err != nil {
+	if err := ensureManagedSSHFragment(path); err != nil {
 		return err
+	}
+	if err := app.EnsureSSHInclude(path); err == nil {
+		return nil
 	}
 	if _, err := os.Stat(path); err == nil {
 		return nil
+	} else {
+		return err
+	}
+}
+
+func ensureManagedSSHFragment(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
 	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	return os.WriteFile(path, []byte("# Managed by bastion-session CLI\n"), 0o600)

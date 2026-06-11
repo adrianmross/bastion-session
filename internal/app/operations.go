@@ -40,6 +40,9 @@ func OCIClientFromConfig(cfg Config) OCIClient {
 }
 
 func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, error) {
+	if err := EnsureOCIContextAuth(cfg); err != nil {
+		return BastionSession{}, err
+	}
 	client := OCIClientFromConfig(cfg)
 	metadata, err := resolveTargetMetadata(cfg, client, opts)
 	if err != nil {
@@ -97,13 +100,14 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		}
 	}
 
+	sessionTTL := effectiveSessionTTL(client, metadata.BastionID, opts.SessionTTL)
 	created, err := client.CreateSession(TargetDetails{
 		BastionID:     metadata.BastionID,
 		InstanceID:    metadata.InstanceID,
 		PrivateIP:     metadata.PrivateIP,
 		TargetUser:    cfg.TargetUser,
 		PublicKeyPath: pub,
-		SessionTTL:    opts.SessionTTL,
+		SessionTTL:    sessionTTL,
 	})
 	if err != nil {
 		return BastionSession{}, err
@@ -151,6 +155,21 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		LastSeenAt: time.Now().UTC(),
 	})
 	return active, nil
+}
+
+func effectiveSessionTTL(client OCIClient, bastionID string, requested time.Duration) time.Duration {
+	if requested <= 0 {
+		return 0
+	}
+	bastion, err := client.GetBastion(strings.TrimSpace(bastionID))
+	if err != nil || bastion.MaxSessionTTL <= 0 {
+		return requested
+	}
+	maxTTL := time.Duration(bastion.MaxSessionTTL) * time.Second
+	if requested > maxTTL {
+		return maxTTL
+	}
+	return requested
 }
 
 func listActiveSessions(client OCIClient, bastionID string) []SessionInfo {

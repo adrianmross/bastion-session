@@ -38,6 +38,7 @@ func newServiceLaunchdGenerateCmd() *cobra.Command {
 		stdoutPath string
 		stderrPath string
 		interval   int
+		sessionTTL string
 	)
 
 	cmd := &cobra.Command{
@@ -69,7 +70,7 @@ func newServiceLaunchdGenerateCmd() *cobra.Command {
 			if outPath == "" {
 				outPath = filepath.Join(home, "Library", "LaunchAgents", label+".plist")
 			}
-			plist := renderLaunchdPlist(label, binaryPath, interval, stdoutPath, stderrPath)
+			plist := renderLaunchdPlist(label, binaryPath, interval, sessionTTL, stdoutPath, stderrPath)
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				return err
 			}
@@ -88,6 +89,7 @@ func newServiceLaunchdGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&stdoutPath, "stdout-log", "", "stdout log path")
 	cmd.Flags().StringVar(&stderrPath, "stderr-log", "", "stderr log path")
 	cmd.Flags().IntVar(&interval, "interval", 300, "Watch interval in seconds")
+	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	return cmd
 }
 
@@ -99,6 +101,7 @@ func newServiceLaunchdInstallCmd() *cobra.Command {
 		stdoutPath string
 		stderrPath string
 		interval   int
+		sessionTTL string
 		loadNow    bool
 	)
 
@@ -135,7 +138,7 @@ func newServiceLaunchdInstallCmd() *cobra.Command {
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(outPath, []byte(renderLaunchdPlist(label, binaryPath, interval, stdoutPath, stderrPath)), 0o644); err != nil {
+			if err := os.WriteFile(outPath, []byte(renderLaunchdPlist(label, binaryPath, interval, sessionTTL, stdoutPath, stderrPath)), 0o644); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s\n", outPath)
@@ -163,6 +166,7 @@ func newServiceLaunchdInstallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&stdoutPath, "stdout-log", "", "stdout log path")
 	cmd.Flags().StringVar(&stderrPath, "stderr-log", "", "stderr log path")
 	cmd.Flags().IntVar(&interval, "interval", 300, "Watch interval in seconds")
+	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	cmd.Flags().BoolVar(&loadNow, "load", true, "Load and start launchd agent after writing plist")
 	return cmd
 }
@@ -182,6 +186,7 @@ func newServiceSystemdGenerateCmd() *cobra.Command {
 		binaryPath  string
 		outPath     string
 		interval    int
+		sessionTTL  string
 	)
 	cmd := &cobra.Command{
 		Use:   "generate",
@@ -207,7 +212,7 @@ func newServiceSystemdGenerateCmd() *cobra.Command {
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(outPath, []byte(renderSystemdUnit(binaryPath, interval)), 0o644); err != nil {
+			if err := os.WriteFile(outPath, []byte(renderSystemdUnit(binaryPath, interval, sessionTTL)), 0o644); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s\n", outPath)
@@ -220,6 +225,7 @@ func newServiceSystemdGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&binaryPath, "binary", "", "Absolute path to bastion-session binary")
 	cmd.Flags().StringVar(&outPath, "out", "", "Output service path (default ~/.config/systemd/user/<service-name>)")
 	cmd.Flags().IntVar(&interval, "interval", 300, "Watch interval in seconds")
+	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	return cmd
 }
 
@@ -229,6 +235,7 @@ func newServiceSystemdInstallCmd() *cobra.Command {
 		binaryPath  string
 		outPath     string
 		interval    int
+		sessionTTL  string
 		enableNow   bool
 	)
 	cmd := &cobra.Command{
@@ -258,7 +265,7 @@ func newServiceSystemdInstallCmd() *cobra.Command {
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(outPath, []byte(renderSystemdUnit(binaryPath, interval)), 0o644); err != nil {
+			if err := os.WriteFile(outPath, []byte(renderSystemdUnit(binaryPath, interval, sessionTTL)), 0o644); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s\n", outPath)
@@ -284,6 +291,7 @@ func newServiceSystemdInstallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&binaryPath, "binary", "", "Absolute path to bastion-session binary")
 	cmd.Flags().StringVar(&outPath, "out", "", "Output service path (default ~/.config/systemd/user/<service-name>)")
 	cmd.Flags().IntVar(&interval, "interval", 300, "Watch interval in seconds")
+	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	cmd.Flags().BoolVar(&enableNow, "enable", true, "Run systemctl --user daemon-reload and enable --now")
 	return cmd
 }
@@ -299,12 +307,16 @@ func resolveBinaryPath(bin string) (string, error) {
 	return exe, nil
 }
 
-func renderLaunchdPlist(label, binaryPath string, interval int, stdoutPath, stderrPath string) string {
+const servicePATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+func renderLaunchdPlist(label, binaryPath string, interval int, sessionTTL, stdoutPath, stderrPath string) string {
 	args := []string{
 		xmlEscape(binaryPath),
 		"watch",
 		"--interval",
 		strconv.Itoa(interval),
+		"--session-ttl",
+		sessionTTL,
 	}
 	argXML := make([]string, 0, len(args))
 	for _, a := range args {
@@ -326,29 +338,35 @@ func renderLaunchdPlist(label, binaryPath string, interval int, stdoutPath, stde
     <true/>
     <key>ProcessType</key>
     <string>Background</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>%s</string>
+    </dict>
     <key>StandardOutPath</key>
     <string>%s</string>
     <key>StandardErrorPath</key>
     <string>%s</string>
   </dict>
 </plist>
-`, xmlEscape(label), strings.Join(argXML, "\n"), xmlEscape(stdoutPath), xmlEscape(stderrPath))
+`, xmlEscape(label), strings.Join(argXML, "\n"), xmlEscape(servicePATH), xmlEscape(stdoutPath), xmlEscape(stderrPath))
 }
 
-func renderSystemdUnit(binaryPath string, interval int) string {
+func renderSystemdUnit(binaryPath string, interval int, sessionTTL string) string {
 	return fmt.Sprintf(`[Unit]
 Description=OCI Bastion Session Watcher
 After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%s watch --interval %d
+Environment=PATH=%s
+ExecStart=%s watch --interval %d --session-ttl %s
 Restart=on-failure
 RestartSec=30
 
 [Install]
 WantedBy=default.target
-`, shellEscapeForSystemd(binaryPath), interval)
+`, servicePATH, shellEscapeForSystemd(binaryPath), interval, shellEscapeForSystemd(sessionTTL))
 }
 
 func shellEscapeForSystemd(s string) string {

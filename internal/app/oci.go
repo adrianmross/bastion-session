@@ -143,7 +143,7 @@ func (c OCIClient) CreateSession(target TargetDetails) (BastionSession, error) {
 		"--raw-output",
 	}
 	if target.SessionTTL > 0 {
-		args = append(args, "--session-ttl-in-seconds", strconv.FormatInt(int64(target.SessionTTL/time.Second), 10))
+		args = append(args, "--session-ttl", strconv.FormatInt(int64(target.SessionTTL/time.Second), 10))
 	}
 	out, err := c.run(args...)
 	if err != nil {

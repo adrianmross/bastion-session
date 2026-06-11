@@ -41,14 +41,14 @@ JSON
 	}
 	args := strings.Split(strings.TrimSpace(string(argsBytes)), "\n")
 	for i, arg := range args {
-		if arg == "--session-ttl-in-seconds" {
+		if arg == "--session-ttl" {
 			if i+1 >= len(args) || args[i+1] != "10800" {
 				t.Fatalf("unexpected ttl args: %v", args)
 			}
 			return
 		}
 	}
-	t.Fatalf("missing --session-ttl-in-seconds in args: %v", args)
+	t.Fatalf("missing --session-ttl in args: %v", args)
 }
 
 func TestSecurityTokenFailureTriggersOCIContextNotification(t *testing.T) {

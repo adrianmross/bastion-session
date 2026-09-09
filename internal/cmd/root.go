@@ -143,6 +143,7 @@ func newRootCmd() *cobra.Command {
 		newRefreshCmd(opts),
 		newEnsureCmd(opts),
 		newConnectCmd(opts),
+		newForwardCmd(opts),
 		newStatusCmd(opts),
 		newWatchCmd(opts),
 		newListCmd(opts),

@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -17,6 +19,24 @@ const (
 	DefaultWatchInterval      = 300 * time.Second
 	MinAutoRefresh            = 30 * time.Second
 	AutoRefreshMargin         = ActiveWaitTimeout + 30*time.Second
+
+	// A PORT-FORWARDING session reaches ACTIVE before its SSH front door will accept the
+	// session key. Measured against a live bastion (us-sanjose-1, 4 runs): the first
+	// connection attempt after ACTIVE failed EVERY time, and the forward was provable
+	// 4-9s later. The failure surfaces as "Permission denied (publickey)", which reads
+	// like a key problem and sends you looking in the wrong place.
+	//
+	// This is NOT a property of the shared bastion front door, which was the obvious
+	// guess and is wrong. MANAGED_SSH sessions were measured the same way against a
+	// plugin-enabled instance and authenticated on the FIRST attempt, 4 runs out of 4,
+	// ~2s after ACTIVE. So connect/ensure deliberately do not probe: it would cost a
+	// round trip per invocation to wait for a lag those sessions do not have. They also
+	// do not open the connection themselves -- they write SSH config and leave the user
+	// to ssh -- so a probe there would be advisory at best.
+	//
+	// If that ever changes, WaitForSSHReady is the hook; pass it a probe.
+	SSHReadyTimeout      = 60 * time.Second
+	SSHReadyPollInterval = 3 * time.Second
 )
 
 type SessionMetadata struct {
@@ -214,6 +234,45 @@ func EnsureSSHInclude(includePath string) error {
 	return os.WriteFile(mainConfig, []byte(content), 0o600)
 }
 
+// identityHardeningLines pins which identity ssh offers for a generated Host block.
+//
+// `IdentitiesOnly yes` is always safe: it stops ssh walking the agent and offering
+// unrelated keys first, which on a well-stocked agent can exhaust MaxAuthTries before the
+// right key is ever tried.
+//
+// `IdentityAgent none` is NOT always safe, and used to be emitted unconditionally. It
+// makes ssh ignore the agent entirely, so a PASSPHRASE-PROTECTED key -- whose usable
+// decrypted copy lives only in the agent -- can no longer authenticate: every connection
+// either prompts for the passphrase or, non-interactively, fails outright with
+// "Permission denied (publickey)". Verified against a live bastion: with the agent, the
+// forward works; with `IdentityAgent none`, the identical session is denied.
+//
+// So it is emitted only when the private key is readable WITHOUT a passphrase, where it
+// is pure hardening and costs nothing.
+func identityHardeningLines(privateKey string) []string {
+	lines := []string{"  IdentitiesOnly yes"}
+	if privateKeyIsPassphraseless(privateKey) {
+		lines = append(lines, "  IdentityAgent none")
+	}
+	return lines
+}
+
+// privateKeyIsPassphraseless reports whether the key at path can be read without a
+// passphrase. An unreadable or unknown key returns false, which keeps the agent available
+// -- the safe direction, since disabling it is what breaks authentication.
+func privateKeyIsPassphraseless(path string) bool {
+	p := strings.TrimSpace(path)
+	if p == "" {
+		return false
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return false
+	}
+	_, err = ssh.ParseRawPrivateKey(data)
+	return err == nil
+}
+
 func UpdateSSHFragment(cfg Config, sessionID string) error {
 	return UpdateSSHFragmentWithTarget(cfg, sessionID, TargetSSHHost{})
 }
@@ -231,10 +290,7 @@ func UpdateSSHFragmentWithTarget(cfg Config, sessionID string, target TargetSSHH
 	if privateKey != "" {
 		lines = append(lines, fmt.Sprintf("  IdentityFile %s", privateKey))
 	}
-	lines = append(lines,
-		"  IdentitiesOnly yes",
-		"  IdentityAgent none",
-	)
+	lines = append(lines, identityHardeningLines(privateKey)...)
 	if strings.TrimSpace(target.Alias) != "" {
 		proxyJump := strings.TrimSpace(target.ProxyJump)
 		if proxyJump == "" {
@@ -298,10 +354,7 @@ func UpdateSSHFragmentForHosts(path string, hosts []SSHHostEntry) error {
 		if privateKey != "" {
 			lines = append(lines, fmt.Sprintf("  IdentityFile %s", privateKey))
 		}
-		lines = append(lines,
-			"  IdentitiesOnly yes",
-			"  IdentityAgent none",
-		)
+		lines = append(lines, identityHardeningLines(privateKey)...)
 	}
 	for _, block := range preservedNonBastionSSHBlocks(path, generatedAliases) {
 		lines = append(lines, "")
@@ -441,6 +494,39 @@ func WaitForActive(client OCIClient, sessionID string, timeout time.Duration, po
 		}
 		if time.Now().After(deadline) {
 			return BastionSession{}, fmt.Errorf("session %s did not reach ACTIVE state within %s (last state: %s)", sessionID, timeout.String(), lastState)
+		}
+		time.Sleep(poll)
+	}
+}
+
+// SSHProbe reports whether the bastion's SSH front door will authenticate sessionID yet.
+// Split out so callers can supply a fake in tests and so the probe can be reused by any
+// session type -- both managed-SSH and port-forwarding authenticate at the same door.
+type SSHProbe func(sessionID string) bool
+
+// WaitForSSHReady blocks until probe succeeds, or timeout elapses.
+//
+// ACTIVE is necessary but NOT sufficient: see SSHReadyTimeout. Returning as soon as the
+// lifecycle state flips hands the caller a session that reliably rejects the first
+// connection. A nil probe makes this a no-op so existing callers keep their behaviour
+// until they opt in.
+func WaitForSSHReady(sessionID string, probe SSHProbe, timeout, poll time.Duration, onAttempt func(int)) error {
+	if probe == nil {
+		return nil
+	}
+	if poll <= 0 {
+		poll = SSHReadyPollInterval
+	}
+	deadline := time.Now().Add(timeout)
+	for attempt := 1; ; attempt++ {
+		if onAttempt != nil {
+			onAttempt(attempt)
+		}
+		if probe(sessionID) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %s reached ACTIVE but its SSH endpoint did not accept the key within %s", sessionID, timeout.String())
 		}
 		time.Sleep(poll)
 	}

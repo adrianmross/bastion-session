@@ -152,6 +152,53 @@ func (c OCIClient) CreateSession(target TargetDetails) (BastionSession, error) {
 	return parseSessionJSON(out)
 }
 
+// ForwardTarget describes a port-forwarding session: an address:port inside the bastion's
+// own VCN, with no target instance and no OS user.
+//
+// This is a different OCI session TYPE to managed-SSH, not a variation of it. Managed-SSH
+// additionally requires the Bastion plugin to be enabled on the target instance, which
+// rules it out for things that are not compute -- an OKE private API endpoint, a database,
+// an internal service. Port-forwarding has no such requirement.
+type ForwardTarget struct {
+	BastionID     string
+	PrivateIP     string
+	Port          int
+	PublicKeyPath string
+	SessionTTL    time.Duration
+	DisplayName   string
+}
+
+// CreateForwardSession opens a port-forwarding session.
+//
+// Note the bastion must live in the SAME VCN as PrivateIP. OCI rejects a cross-VCN target
+// even when routing exists (e.g. over a local peering gateway), with a message that reads
+// as though the address itself were malformed:
+//
+//	InvalidParameter: You must provide a valid target private IP address
+//	(targetResourcePrivateIpAddress) to create an SSH port forwarding session.
+func (c OCIClient) CreateForwardSession(target ForwardTarget) (BastionSession, error) {
+	args := []string{
+		"bastion", "session", "create-port-forwarding",
+		"--bastion-id", target.BastionID,
+		"--target-private-ip", target.PrivateIP,
+		"--target-port", strconv.Itoa(target.Port),
+		"--ssh-public-key-file", target.PublicKeyPath,
+		"--query", "data",
+		"--raw-output",
+	}
+	if target.SessionTTL > 0 {
+		args = append(args, "--session-ttl", strconv.FormatInt(int64(target.SessionTTL/time.Second), 10))
+	}
+	if name := strings.TrimSpace(target.DisplayName); name != "" {
+		args = append(args, "--display-name", name)
+	}
+	out, err := c.run(args...)
+	if err != nil {
+		return BastionSession{}, err
+	}
+	return parseSessionJSON(out)
+}
+
 func (c OCIClient) GetSession(sessionID string) (BastionSession, error) {
 	out, err := c.run(
 		"bastion", "session", "get",

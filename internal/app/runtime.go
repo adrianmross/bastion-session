@@ -20,11 +20,21 @@ const (
 	MinAutoRefresh            = 30 * time.Second
 	AutoRefreshMargin         = ActiveWaitTimeout + 30*time.Second
 
-	// A session reaches ACTIVE before its SSH front door will accept the session key.
-	// Measured against a live bastion (us-sanjose-1, 4 runs, port-forwarding sessions):
-	// the first connection attempt after ACTIVE failed EVERY time, and the forward was
-	// provable 4-9s later. The failure surfaces as "Permission denied (publickey)",
-	// which reads like a key problem and sends you looking in the wrong place.
+	// A PORT-FORWARDING session reaches ACTIVE before its SSH front door will accept the
+	// session key. Measured against a live bastion (us-sanjose-1, 4 runs): the first
+	// connection attempt after ACTIVE failed EVERY time, and the forward was provable
+	// 4-9s later. The failure surfaces as "Permission denied (publickey)", which reads
+	// like a key problem and sends you looking in the wrong place.
+	//
+	// This is NOT a property of the shared bastion front door, which was the obvious
+	// guess and is wrong. MANAGED_SSH sessions were measured the same way against a
+	// plugin-enabled instance and authenticated on the FIRST attempt, 4 runs out of 4,
+	// ~2s after ACTIVE. So connect/ensure deliberately do not probe: it would cost a
+	// round trip per invocation to wait for a lag those sessions do not have. They also
+	// do not open the connection themselves -- they write SSH config and leave the user
+	// to ssh -- so a probe there would be advisory at best.
+	//
+	// If that ever changes, WaitForSSHReady is the hook; pass it a probe.
 	SSHReadyTimeout      = 60 * time.Second
 	SSHReadyPollInterval = 3 * time.Second
 )

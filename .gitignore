@@ -9,3 +9,7 @@ tmp/
 # IDE settings
 .idea/
 .vscode/
+
+# devenv / direnv
+.devenv/
+.direnv/

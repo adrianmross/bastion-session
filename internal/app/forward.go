@@ -24,7 +24,7 @@ func ForwardSSHArgs(cfg Config, sessionID string, localPort int, targetIP string
 		// only shows up later as a connection refused from whatever uses the tunnel.
 		"-o", "ExitOnForwardFailure=yes",
 		"-o", "ConnectTimeout=10",
-		"-N", "-L", fmt.Sprintf("%d:%s:%d", localPort, targetIP, targetPort),
+		"-N", "-L", fmt.Sprintf("127.0.0.1:%d:%s:%d", localPort, targetIP, targetPort),
 		"-p", "22",
 		fmt.Sprintf("%s@host.bastion.%s.oci.oraclecloud.com", sessionID, cfg.Region),
 	)

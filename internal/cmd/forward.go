@@ -82,7 +82,6 @@ func newForwardCmd(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			applyCurrentSelectionIdentity(&opts.cfg, cur)
 			bid, err := requireBastionID(cur, bastionID)
 			if err != nil {
 				return err

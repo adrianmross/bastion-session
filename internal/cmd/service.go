@@ -12,6 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	defaultServiceWatchSource = "all"
+)
+
 func newServiceCmd(_ *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "service",
@@ -38,6 +42,7 @@ func newServiceLaunchdGenerateCmd() *cobra.Command {
 		stdoutPath string
 		stderrPath string
 		interval   int
+		source     string
 		sessionTTL string
 	)
 
@@ -55,6 +60,13 @@ func newServiceLaunchdGenerateCmd() *cobra.Command {
 			if interval <= 0 {
 				return fmt.Errorf("--interval must be > 0")
 			}
+			source = normalizedServiceWatchSource(source)
+			if err := validateServiceWatchSource(source); err != nil {
+				return err
+			}
+			if _, err := parseSessionTTL(sessionTTL); err != nil {
+				return err
+			}
 			if binaryPath == "" {
 				binaryPath, err = resolveBinaryPath("bastion-session")
 				if err != nil {
@@ -70,7 +82,7 @@ func newServiceLaunchdGenerateCmd() *cobra.Command {
 			if outPath == "" {
 				outPath = filepath.Join(home, "Library", "LaunchAgents", label+".plist")
 			}
-			plist := renderLaunchdPlist(label, binaryPath, interval, sessionTTL, stdoutPath, stderrPath)
+			plist := renderLaunchdPlist(label, binaryPath, interval, source, sessionTTL, stdoutPath, stderrPath)
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				return err
 			}
@@ -89,6 +101,7 @@ func newServiceLaunchdGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&stdoutPath, "stdout-log", "", "stdout log path")
 	cmd.Flags().StringVar(&stderrPath, "stderr-log", "", "stderr log path")
 	cmd.Flags().IntVar(&interval, "interval", 300, "Watch interval in seconds")
+	cmd.Flags().StringVar(&source, "source", defaultServiceWatchSource, "Watch source: current, tracked, or all")
 	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	return cmd
 }
@@ -101,8 +114,9 @@ func newServiceLaunchdInstallCmd() *cobra.Command {
 		stdoutPath string
 		stderrPath string
 		interval   int
-		sessionTTL string
 		loadNow    bool
+		source     string
+		sessionTTL string
 	)
 
 	cmd := &cobra.Command{
@@ -118,6 +132,13 @@ func newServiceLaunchdInstallCmd() *cobra.Command {
 			}
 			if interval <= 0 {
 				return fmt.Errorf("--interval must be > 0")
+			}
+			source = normalizedServiceWatchSource(source)
+			if err := validateServiceWatchSource(source); err != nil {
+				return err
+			}
+			if _, err := parseSessionTTL(sessionTTL); err != nil {
+				return err
 			}
 			if binaryPath == "" {
 				binaryPath, err = resolveBinaryPath("bastion-session")
@@ -138,7 +159,7 @@ func newServiceLaunchdInstallCmd() *cobra.Command {
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(outPath, []byte(renderLaunchdPlist(label, binaryPath, interval, sessionTTL, stdoutPath, stderrPath)), 0o644); err != nil {
+			if err := os.WriteFile(outPath, []byte(renderLaunchdPlist(label, binaryPath, interval, source, sessionTTL, stdoutPath, stderrPath)), 0o644); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s\n", outPath)
@@ -166,8 +187,9 @@ func newServiceLaunchdInstallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&stdoutPath, "stdout-log", "", "stdout log path")
 	cmd.Flags().StringVar(&stderrPath, "stderr-log", "", "stderr log path")
 	cmd.Flags().IntVar(&interval, "interval", 300, "Watch interval in seconds")
-	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	cmd.Flags().BoolVar(&loadNow, "load", true, "Load and start launchd agent after writing plist")
+	cmd.Flags().StringVar(&source, "source", defaultServiceWatchSource, "Watch source: current, tracked, or all")
+	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	return cmd
 }
 
@@ -186,6 +208,7 @@ func newServiceSystemdGenerateCmd() *cobra.Command {
 		binaryPath  string
 		outPath     string
 		interval    int
+		source      string
 		sessionTTL  string
 	)
 	cmd := &cobra.Command{
@@ -198,6 +221,13 @@ func newServiceSystemdGenerateCmd() *cobra.Command {
 			}
 			if interval <= 0 {
 				return fmt.Errorf("--interval must be > 0")
+			}
+			source = normalizedServiceWatchSource(source)
+			if err := validateServiceWatchSource(source); err != nil {
+				return err
+			}
+			if _, err := parseSessionTTL(sessionTTL); err != nil {
+				return err
 			}
 			if binaryPath == "" {
 				binaryPath, err = resolveBinaryPath("bastion-session")
@@ -212,7 +242,7 @@ func newServiceSystemdGenerateCmd() *cobra.Command {
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(outPath, []byte(renderSystemdUnit(binaryPath, interval, sessionTTL)), 0o644); err != nil {
+			if err := os.WriteFile(outPath, []byte(renderSystemdUnit(binaryPath, interval, source, sessionTTL)), 0o644); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s\n", outPath)
@@ -225,6 +255,7 @@ func newServiceSystemdGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&binaryPath, "binary", "", "Absolute path to bastion-session binary")
 	cmd.Flags().StringVar(&outPath, "out", "", "Output service path (default ~/.config/systemd/user/<service-name>)")
 	cmd.Flags().IntVar(&interval, "interval", 300, "Watch interval in seconds")
+	cmd.Flags().StringVar(&source, "source", defaultServiceWatchSource, "Watch source: current, tracked, or all")
 	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	return cmd
 }
@@ -235,8 +266,9 @@ func newServiceSystemdInstallCmd() *cobra.Command {
 		binaryPath  string
 		outPath     string
 		interval    int
-		sessionTTL  string
 		enableNow   bool
+		source      string
+		sessionTTL  string
 	)
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -252,6 +284,13 @@ func newServiceSystemdInstallCmd() *cobra.Command {
 			if interval <= 0 {
 				return fmt.Errorf("--interval must be > 0")
 			}
+			source = normalizedServiceWatchSource(source)
+			if err := validateServiceWatchSource(source); err != nil {
+				return err
+			}
+			if _, err := parseSessionTTL(sessionTTL); err != nil {
+				return err
+			}
 			if binaryPath == "" {
 				binaryPath, err = resolveBinaryPath("bastion-session")
 				if err != nil {
@@ -265,7 +304,7 @@ func newServiceSystemdInstallCmd() *cobra.Command {
 			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(outPath, []byte(renderSystemdUnit(binaryPath, interval, sessionTTL)), 0o644); err != nil {
+			if err := os.WriteFile(outPath, []byte(renderSystemdUnit(binaryPath, interval, source, sessionTTL)), 0o644); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s\n", outPath)
@@ -291,8 +330,9 @@ func newServiceSystemdInstallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&binaryPath, "binary", "", "Absolute path to bastion-session binary")
 	cmd.Flags().StringVar(&outPath, "out", "", "Output service path (default ~/.config/systemd/user/<service-name>)")
 	cmd.Flags().IntVar(&interval, "interval", 300, "Watch interval in seconds")
-	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	cmd.Flags().BoolVar(&enableNow, "enable", true, "Run systemctl --user daemon-reload and enable --now")
+	cmd.Flags().StringVar(&source, "source", defaultServiceWatchSource, "Watch source: current, tracked, or all")
+	cmd.Flags().StringVar(&sessionTTL, "session-ttl", defaultWatchSessionTTLText(), "Requested TTL for newly created sessions")
 	return cmd
 }
 
@@ -309,10 +349,12 @@ func resolveBinaryPath(bin string) (string, error) {
 
 const servicePATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-func renderLaunchdPlist(label, binaryPath string, interval int, sessionTTL, stdoutPath, stderrPath string) string {
+func renderLaunchdPlist(label, binaryPath string, interval int, source, sessionTTL, stdoutPath, stderrPath string) string {
 	args := []string{
 		xmlEscape(binaryPath),
 		"watch",
+		"--source",
+		source,
 		"--interval",
 		strconv.Itoa(interval),
 		"--session-ttl",
@@ -352,7 +394,7 @@ func renderLaunchdPlist(label, binaryPath string, interval int, sessionTTL, stdo
 `, xmlEscape(label), strings.Join(argXML, "\n"), xmlEscape(servicePATH), xmlEscape(stdoutPath), xmlEscape(stderrPath))
 }
 
-func renderSystemdUnit(binaryPath string, interval int, sessionTTL string) string {
+func renderSystemdUnit(binaryPath string, interval int, source, sessionTTL string) string {
 	return fmt.Sprintf(`[Unit]
 Description=OCI Bastion Session Watcher
 After=network-online.target
@@ -360,13 +402,13 @@ After=network-online.target
 [Service]
 Type=simple
 Environment=PATH=%s
-ExecStart=%s watch --interval %d --session-ttl %s
+ExecStart=%s watch --source %s --interval %d --session-ttl %s
 Restart=on-failure
 RestartSec=30
 
 [Install]
 WantedBy=default.target
-`, servicePATH, shellEscapeForSystemd(binaryPath), interval, shellEscapeForSystemd(sessionTTL))
+`, servicePATH, shellEscapeForSystemd(binaryPath), shellEscapeForSystemd(source), interval, shellEscapeForSystemd(sessionTTL))
 }
 
 func shellEscapeForSystemd(s string) string {
@@ -388,4 +430,20 @@ func xmlEscape(s string) string {
 		"'", "&apos;",
 	)
 	return repl.Replace(s)
+}
+
+func normalizedServiceWatchSource(source string) string {
+	if source = strings.TrimSpace(source); source != "" {
+		return normalizedWatchSource(source)
+	}
+	return defaultServiceWatchSource
+}
+
+func validateServiceWatchSource(source string) error {
+	switch source {
+	case "current", "tracked", "all":
+		return nil
+	default:
+		return fmt.Errorf("invalid --source %q; expected current, tracked, or all", source)
+	}
 }

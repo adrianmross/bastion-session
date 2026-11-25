@@ -288,3 +288,5 @@ make validate-workflows
 - automatic semantic tagging on `main`: `.github/workflows/auto-release.yml`
 
 The legacy Python implementation has been removed. `bastion-session` is Go-only.
+
+Generated launchd and systemd watchers use `--source all` by default. Pass `--source tracked` or `--source current` to `service launchd generate`, `service launchd install`, `service systemd generate`, or `service systemd install` to narrow their scope.

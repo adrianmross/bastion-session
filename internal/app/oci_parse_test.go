@@ -24,6 +24,17 @@ func TestParseSessionJSONIncludesTargetDetailsKebabCase(t *testing.T) {
 	}
 }
 
+func TestParseSessionJSONIncludesPublicKeyContent(t *testing.T) {
+	out := []byte(`{"id":"ocid1.session.oc1..s3","bastionId":"ocid1.bastion.oc1..b3","targetResourceId":"ocid1.instance.oc1..i3","targetResourceDetails":{"privateIpAddress":"10.0.0.33"},"keyDetails":{"publicKeyContent":"ssh-ed25519 AAAAkey comment"},"lifecycleState":"ACTIVE","timeCreated":"2026-03-19T12:00:00Z","timeExpires":"2026-03-19T13:00:00Z"}`)
+	s, err := parseSessionJSON(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.PublicKeyContent != "ssh-ed25519 AAAAkey comment" {
+		t.Fatalf("unexpected public key content: %q", s.PublicKeyContent)
+	}
+}
+
 func TestAsNestedString(t *testing.T) {
 	row := map[string]any{
 		"targetResourceDetails": map[string]any{

@@ -106,11 +106,12 @@ func TestResolveBastionIDTokenFromCurrentRef(t *testing.T) {
 	}
 }
 
-func TestApplyCurrentSelectionIdentityOverridesScopedIdentity(t *testing.T) {
+func TestApplyCurrentSelectionIdentityBackfillsSSHKeyOnlyWhenUnset(t *testing.T) {
 	cfg := app.Config{
-		Profile:    "oabcs1-terraform",
-		Region:     "us-chicago-1",
-		AuthMethod: "security_token",
+		Profile:      "example-profile",
+		Region:       "us-chicago-1",
+		AuthMethod:   "security_token",
+		SSHPublicKey: "/tmp/explicit.pub",
 	}
 	cur := &app.CurrentBastion{
 		Profile:      "DEFAULT",
@@ -128,7 +129,13 @@ func TestApplyCurrentSelectionIdentityOverridesScopedIdentity(t *testing.T) {
 	if cfg.AuthMethod != "api_key" {
 		t.Fatalf("expected auth override from current, got %q", cfg.AuthMethod)
 	}
+	if cfg.SSHPublicKey != "/tmp/explicit.pub" {
+		t.Fatalf("expected explicit ssh key to be preserved, got %q", cfg.SSHPublicKey)
+	}
+
+	cfg.SSHPublicKey = ""
+	applyCurrentSelectionIdentity(&cfg, cur)
 	if cfg.SSHPublicKey != "/tmp/id.pub" {
-		t.Fatalf("expected ssh key override from current, got %q", cfg.SSHPublicKey)
+		t.Fatalf("expected ssh key backfill from current, got %q", cfg.SSHPublicKey)
 	}
 }

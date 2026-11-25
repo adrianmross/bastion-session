@@ -110,6 +110,8 @@ ssh my-vps-01
 
 ## Host-Facing SSH
 
+Managed SSH session reuse checks the public key OCI returns for each candidate. A missing or different key causes the CLI to try the next active session. The generated bastion host entry selects the matching private key, or the public identity for an SSH agent that holds the private key. A key supplied to `ensure` takes precedence over a saved selection.
+
 The generated include file keeps the internal bastion jump host current while
 preserving durable VM aliases:
 

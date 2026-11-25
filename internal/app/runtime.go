@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -419,16 +420,68 @@ func preservedNonBastionSSHBlocks(includePath string, generatedAliases map[strin
 }
 
 func resolvePrivateKey(explicit, public string) string {
-	if explicit != "" {
+	explicit = strings.TrimSpace(explicit)
+	public = strings.TrimSpace(public)
+	desired := publicKeyMaterialFromPath(public)
+	if explicit != "" && (desired == "" || identityPublicKey(explicit) == desired) {
 		return explicit
 	}
 	if strings.HasSuffix(public, ".pub") {
 		candidate := strings.TrimSuffix(public, ".pub")
-		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
-			return candidate
+		if st, err := os.Stat(expandHome(candidate)); err == nil && st.Mode().IsRegular() {
+			if desired == "" || identityPublicKey(candidate) == desired {
+				return candidate
+			}
 		}
 	}
+	if desired != "" {
+		// OpenSSH can select an agent-backed identity using its public file alone.
+		return public
+	}
 	return ""
+}
+
+func identityPublicKey(path string) string {
+	if strings.HasSuffix(path, ".pub") {
+		return publicKeyMaterialFromPath(path)
+	}
+	data, err := os.ReadFile(expandHome(path))
+	if err != nil {
+		return ""
+	}
+	defer clear(data)
+	signer, err := ssh.ParsePrivateKey(data)
+	if err == nil {
+		return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+	}
+	var encrypted *ssh.PassphraseMissingError
+	if errors.As(err, &encrypted) {
+		if encrypted.PublicKey != nil {
+			return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(encrypted.PublicKey)))
+		}
+		// Older encrypted formats only expose the public identity through a sidecar.
+		return publicKeyMaterialFromPath(path + ".pub")
+	}
+	return ""
+}
+
+func publicKeyMaterialFromPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(expandHome(path))
+	if err != nil {
+		return ""
+	}
+	return normalizePublicKeyMaterial(string(data))
+}
+
+func normalizePublicKeyMaterial(raw string) string {
+	key, _, options, rest, err := ssh.ParseAuthorizedKey([]byte(raw))
+	if err != nil || len(options) != 0 || strings.TrimSpace(string(rest)) != "" {
+		return ""
+	}
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
 }
 
 func preservedTargetSSHBlocks(includePath, bastionAlias, replacedAlias string) [][]string {

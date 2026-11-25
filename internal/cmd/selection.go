@@ -46,7 +46,7 @@ func applyCurrentSelectionIdentity(cfg *app.Config, cur *app.CurrentBastion) {
 	if v := strings.TrimSpace(cur.AuthMethod); v != "" {
 		cfg.AuthMethod = v
 	}
-	if v := strings.TrimSpace(cur.SSHPublicKey); v != "" {
+	if v := strings.TrimSpace(cur.SSHPublicKey); strings.TrimSpace(cfg.SSHPublicKey) == "" && v != "" {
 		cfg.SSHPublicKey = v
 	}
 	if v := strings.TrimSpace(cur.ContextName); v != "" {

@@ -1,6 +1,10 @@
 package app
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
+	"golang.org/x/crypto/ssh"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,6 +123,69 @@ func TestUpdateSSHFragmentWithTargetWritesVMHostAlias(t *testing.T) {
 			t.Fatalf("expected fragment to contain %q, got:\n%s", want, got)
 		}
 	}
+}
+
+func TestUpdateSSHFragmentPrefersPrivateKeyPairedWithPublicKey(t *testing.T) {
+	dir := t.TempDir()
+	include := filepath.Join(dir, "config.d", "bastion-session")
+	wrongKey := filepath.Join(dir, "wrong")
+	rightKey := filepath.Join(dir, "right")
+	for _, path := range []string{rightKey, wrongKey} {
+		pub, priv, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		block, err := ssh.MarshalPrivateKey(priv, "test fixture")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, pem.EncodeToMemory(block), 0600); err != nil {
+			t.Fatal(err)
+		}
+		sshPub, err := ssh.NewPublicKey(pub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path+".pub", ssh.MarshalAuthorizedKey(sshPub), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A stale sidecar must not make an unrelated private key look like a match.
+	desired, err := os.ReadFile(rightKey + ".pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(wrongKey+".pub", desired, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		Profile:        "dev",
+		Region:         "us-chicago-1",
+		SSHPublicKey:   rightKey + ".pub",
+		SSHPrivateKey:  wrongKey,
+		SSHIncludePath: include,
+	}
+	if err := UpdateSSHFragment(cfg, "ocid1.bastionsession.oc1..abc"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(include)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "  IdentityFile "+rightKey) {
+		t.Fatalf("expected right key paired with public key, got:\n%s", got)
+	}
+	if strings.Contains(got, "  IdentityFile "+wrongKey) {
+		t.Fatalf("mismatched explicit private key should not be written:\n%s", got)
+	}
+	if err := os.Remove(rightKey); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolvePrivateKey(wrongKey, rightKey+".pub"); got != rightKey+".pub" {
+		t.Fatalf("wanted agent-backed public identity, got %q", got)
+	}
+
 }
 
 func TestUpdateSSHFragmentPreservesTargetAliasesAcrossSessionRefresh(t *testing.T) {

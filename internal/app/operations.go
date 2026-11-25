@@ -56,48 +56,49 @@ func RefreshSessionWithTarget(cfg Config, opts RefreshOptions) (BastionSession, 
 		return BastionSession{}, fmt.Errorf("SSH_PUBLIC_KEY environment variable or config required")
 	}
 	cfg.SSHPublicKey = pub
+	desiredPublicKeyContent := publicKeyMaterialFromPath(pub)
+	if desiredPublicKeyContent == "" {
+		return BastionSession{}, fmt.Errorf("cannot read a single valid SSH public key from %s", pub)
+	}
 
 	now := time.Now().UTC()
-	if reusableID, ok := selectReusableSession(metadata, listActiveSessions(client, metadata.BastionID), now, MinReusableSessionTTL); ok {
-		if reused, err := client.GetSession(reusableID); err == nil {
-			if sessionIsReusable(metadata, reused, now, MinReusableSessionTTL) {
-				if opts.OnReused != nil {
-					opts.OnReused(reused)
-				}
-				if err := SaveSession(cfg.SessionStatePath, reused); err != nil {
-					return BastionSession{}, err
-				}
-				if err := EnsureSSHInclude(cfg.SSHIncludePath); err != nil {
-					return BastionSession{}, err
-				}
-				if err := UpdateSSHFragment(cfg, reused.ID); err != nil {
-					return BastionSession{}, err
-				}
-				_ = UpsertTracked(cfg.TrackedBastionsPath, TrackedBastion{
-					ID:         metadata.BastionID,
-					Region:     cfg.Region,
-					Profile:    cfg.Profile,
-					AuthMethod: cfg.AuthMethod,
-					SSHPublicKey: func() string {
-						return cfg.SSHPublicKey
-					}(),
-					CompartmentID: func() string {
-						if cfg.ScopedContext != nil {
-							return cfg.ScopedContext.CompartmentOCID
-						}
-						return ""
-					}(),
-					ContextName: func() string {
-						if cfg.ScopedContext != nil {
-							return cfg.ScopedContext.Name
-						}
-						return ""
-					}(),
-					LastSeenAt: time.Now().UTC(),
-				})
-				return reused, nil
-			}
+	candidates := reusableSessionCandidates(metadata, listActiveSessions(client, metadata.BastionID), now, MinReusableSessionTTL)
+	if reused, ok := findReusableSession(candidates, client.GetSession, metadata, now, MinReusableSessionTTL, desiredPublicKeyContent); ok {
+		if opts.OnReused != nil {
+			opts.OnReused(reused)
 		}
+		if err := SaveSession(cfg.SessionStatePath, reused); err != nil {
+			return BastionSession{}, err
+		}
+		if err := EnsureSSHInclude(cfg.SSHIncludePath); err != nil {
+			return BastionSession{}, err
+		}
+		if err := UpdateSSHFragment(cfg, reused.ID); err != nil {
+			return BastionSession{}, err
+		}
+		_ = UpsertTracked(cfg.TrackedBastionsPath, TrackedBastion{
+			ID:         metadata.BastionID,
+			Region:     cfg.Region,
+			Profile:    cfg.Profile,
+			AuthMethod: cfg.AuthMethod,
+			SSHPublicKey: func() string {
+				return cfg.SSHPublicKey
+			}(),
+			CompartmentID: func() string {
+				if cfg.ScopedContext != nil {
+					return cfg.ScopedContext.CompartmentOCID
+				}
+				return ""
+			}(),
+			ContextName: func() string {
+				if cfg.ScopedContext != nil {
+					return cfg.ScopedContext.Name
+				}
+				return ""
+			}(),
+			LastSeenAt: time.Now().UTC(),
+		})
+		return reused, nil
 	}
 
 	sessionTTL := effectiveSessionTTL(client, metadata.BastionID, opts.SessionTTL)
@@ -180,16 +181,13 @@ func listActiveSessions(client OCIClient, bastionID string) []SessionInfo {
 	return sessions
 }
 
-func selectReusableSession(metadata SessionMetadata, sessions []SessionInfo, now time.Time, minTTL time.Duration) (string, bool) {
+func reusableSessionCandidates(metadata SessionMetadata, sessions []SessionInfo, now time.Time, minTTL time.Duration) []SessionInfo {
 	candidates := make([]SessionInfo, 0, len(sessions))
 	for _, s := range sessions {
 		if !sessionInfoIsReusable(metadata, s, now, minTTL) {
 			continue
 		}
 		candidates = append(candidates, s)
-	}
-	if len(candidates) == 0 {
-		return "", false
 	}
 	slices.SortFunc(candidates, func(a, b SessionInfo) int {
 		if !a.TimeExpires.Equal(b.TimeExpires) {
@@ -206,7 +204,17 @@ func selectReusableSession(metadata SessionMetadata, sessions []SessionInfo, now
 		}
 		return 1
 	})
-	return candidates[0].ID, true
+	return candidates
+}
+
+func findReusableSession(candidates []SessionInfo, getSession func(string) (BastionSession, error), metadata SessionMetadata, now time.Time, minTTL time.Duration, desiredKey string) (BastionSession, bool) {
+	for _, candidate := range candidates {
+		session, err := getSession(candidate.ID)
+		if err == nil && sessionIsReusable(metadata, session, now, minTTL, desiredKey) {
+			return session, true
+		}
+	}
+	return BastionSession{}, false
 }
 
 func sessionInfoIsReusable(metadata SessionMetadata, s SessionInfo, now time.Time, minTTL time.Duration) bool {
@@ -228,7 +236,10 @@ func sessionInfoIsReusable(metadata SessionMetadata, s SessionInfo, now time.Tim
 	return true
 }
 
-func sessionIsReusable(metadata SessionMetadata, s BastionSession, now time.Time, minTTL time.Duration) bool {
+func sessionIsReusable(metadata SessionMetadata, s BastionSession, now time.Time, minTTL time.Duration, desiredPublicKeyContent string) bool {
+	if s.SessionType != "" && !strings.EqualFold(s.SessionType, "MANAGED_SSH") {
+		return false
+	}
 	if !strings.EqualFold(strings.TrimSpace(s.LifecycleState), "ACTIVE") {
 		return false
 	}
@@ -244,7 +255,8 @@ func sessionIsReusable(metadata SessionMetadata, s BastionSession, now time.Time
 	if !s.TimeExpires.IsZero() && !s.TimeExpires.After(now.Add(minTTL)) {
 		return false
 	}
-	return true
+	desired := normalizePublicKeyMaterial(desiredPublicKeyContent)
+	return desired != "" && normalizePublicKeyMaterial(s.PublicKeyContent) == desired
 }
 
 func resolveTargetMetadata(cfg Config, client OCIClient, opts RefreshOptions) (SessionMetadata, error) {

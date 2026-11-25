@@ -118,6 +118,9 @@ func runEnsureHost(cfg *app.Config, sshHost string, opts ensureRunOptions) (ensu
 		return ensureResult{}, err
 	}
 	applyCurrentSelectionIdentity(cfg, cur)
+	if strings.TrimSpace(cfg.SSHPublicKey) == "" {
+		cfg.SSHPublicKey = app.ResolvePublicKey(*cfg)
+	}
 	bid, err := requireBastionID(cur, bastionID)
 	if err != nil {
 		return ensureResult{}, err
